@@ -77,16 +77,18 @@ fn main() {
     println!("{}", result);
 }
 
-fn compute_aux_vector(liabilities: Vec<u64>, max_bits: usize) -> Vec<u64> {
+fn compute_aux_vector(liabilities: &Vec<u64>, max_bits: usize) -> Vec<u64> {
     let mut vec = Vec::<u64>::new();
     vec.push(liabilities[0]);
     let mut remanent = liabilities[0];
-    for i in 1..liabilities.len() {
+    let mut i = 2; // index 1 is the first user's id
+    while i < liabilities.len() {
         let liability = liabilities[i];
         let bits = build_up_bits(liability, max_bits);
         vec.extend_from_slice(&bits);
         vec.push(remanent - liability);
         remanent -= liability;
+        i += 2; // skip the hash value of id
     }
     vec
 }
@@ -143,7 +145,7 @@ fn generate_liabilities() -> Vec<u64> {
 }
 
 fn build_up_bits(value: u64, max_bits: usize) -> Vec<u64> {
-    assert!(value <= 2_u64.pow(u32::try_from(max_bits).unwrap() - 1));
+    assert!(value <= 2_u64.pow(u32::try_from(max_bits).unwrap()));
     let mut bits: Vec<u64> = Vec::with_capacity(max_bits);
     for _ in 0..max_bits {
         bits.push(0);
@@ -151,9 +153,12 @@ fn build_up_bits(value: u64, max_bits: usize) -> Vec<u64> {
     let mut v = value;
     bits[max_bits - 1] = value;
     let mut i = bits.len() - 2;
-    while v > 0 {
+    loop {
         bits[i] = v / 2;
         v = bits[i];
+        if i == 0 {
+            break;
+        }
         i -= 1;
     }
     bits

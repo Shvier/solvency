@@ -29,25 +29,19 @@ fn main() {
     };
 
     // Convert liabilities into vectors and interpolate P
-    type D = GeneralEvaluationDomain::<F>;
-    let domain = D::new(53).unwrap();
-    let vectors: Vec<F> = generate_liabilities().into_iter().map(|v| {F::from(v)}).collect();
-    println!("number of vectors: {}", vectors.len());
-    let evaluations = Evaluations::from_vec_and_domain(vectors, domain);
-
-    let poly = evaluations.interpolate();
-    
-    println!("coeffs size: {}", poly.coeffs.len());
+    let liabilities = generate_liabilities();
+    let p: DensePolynomial<ark_ff::Fp<ark_ff::MontBackend<ark_bls12_381::FrConfig, 4>, 4>> = interpolate_poly(&liabilities);
+    println!("P coeffs size: {}", p.coeffs.len());
 
     // Commit to P
-    let (com, r) = KZG10::<Bls12_381, UniPoly_381>::commit(&powers, &poly, None, None).expect("Commitment failed");
+    let (com, r) = KZG10::<Bls12_381, UniPoly_381>::commit(&powers, &p, None, None).expect("Commitment failed");
 
     // The point at index 0
     let point = F::from(0);
-    let value = poly.evaluate(&point);
+    let value = p.evaluate(&point);
 
     // Compute witness for the point
-    let (witness, _): (UniPoly_381, Option<UniPoly_381>) = KZG10::<Bls12_381, UniPoly_381>::compute_witness_polynomial(&poly, point, &r).unwrap();
+    let (witness, _): (UniPoly_381, Option<UniPoly_381>) = KZG10::<Bls12_381, UniPoly_381>::compute_witness_polynomial(&p, point, &r).unwrap();
 
     let (num_leading_zeros, witness_coeffs) = skip_leading_zeros_and_convert_to_bigints(&witness);
     let witness_comm_time = start_timer!(|| "Computing commitment to witness polynomial");
@@ -75,6 +69,18 @@ fn main() {
     // Verify the proof
     let result = KZG10::<Bls12_381, UniPoly_381>::check(&vk, &com, point, value, &proof).unwrap();
     println!("{}", result);
+
+    // Generate aux vector
+    let aux_vector = compute_aux_vector(&liabilities, 15);
+    let i = interpolate_poly(&aux_vector);
+}
+
+fn interpolate_poly(vectors: &Vec<u64>) -> DensePolynomial<F> {
+    type D = GeneralEvaluationDomain::<F>;
+    let domain = D::new(vectors.len()).unwrap();
+    let ff_vectors = vectors.into_iter().map(|v| {F::from(*v)}).collect();
+    let evaluations = Evaluations::from_vec_and_domain(ff_vectors, domain);
+    evaluations.interpolate()
 }
 
 fn compute_aux_vector(liabilities: &Vec<u64>, max_bits: usize) -> Vec<u64> {
@@ -192,6 +198,6 @@ fn test_compute_aux_vector() {
     let vec = [total, first, second, third].concat();
 
     let liabilities = vec![80, 20, 50, 10];
-    let aux_vec = compute_aux_vector(liabilities, 15);
+    let aux_vec = compute_aux_vector(&liabilities, 15);
     assert!(compare_vecs(&aux_vec, &vec));
 }

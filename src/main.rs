@@ -77,6 +77,20 @@ fn main() {
     println!("{}", result);
 }
 
+fn compute_aux_vector(liabilities: Vec<u64>, max_bits: usize) -> Vec<u64> {
+    let mut vec = Vec::<u64>::new();
+    vec.push(liabilities[0]);
+    let mut remanent = liabilities[0];
+    for i in 1..liabilities.len() {
+        let liability = liabilities[i];
+        let bits = build_up_bits(liability, max_bits);
+        vec.extend_from_slice(&bits);
+        vec.push(remanent - liability);
+        remanent -= liability;
+    }
+    vec
+}
+
 fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: DenseUVPolynomial<F>>(
     p: &P,
 ) -> (usize, Vec<F::BigInt>) {
@@ -145,15 +159,16 @@ fn build_up_bits(value: u64, max_bits: usize) -> Vec<u64> {
     bits
 }
 
+#[cfg(test)]
+fn compare_vecs(va: &[u64], vb: &[u64]) -> bool {
+    (va.len() == vb.len()) &&
+     va.iter()
+       .zip(vb)
+       .all(|(a,b)| *a == *b)
+}
+
 #[test]
 fn test_build_up_bits() {
-    fn compare_vecs(va: &[u64], vb: &[u64]) -> bool {
-        (va.len() == vb.len()) &&
-         va.iter()
-           .zip(vb)
-           .all(|(a,b)| *a == *b)
-    }
-
     let bits_8 = [0, 0, 1, 2, 5, 10, 20];
     let bits = build_up_bits(20, 7);
     assert!(compare_vecs(&bits_8, &bits));
@@ -161,4 +176,17 @@ fn test_build_up_bits() {
     let bits_16 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 6, 12, 25, 50];
     let bits = build_up_bits(50, 15);
     assert!(compare_vecs(&bits_16, &bits));
+}
+
+#[test]
+fn test_compute_aux_vector() {
+    let total = vec![80];
+    let first = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 20, 60];
+    let second = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 6, 12, 25, 50, 10];
+    let third = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 0];
+    let vec = [total, first, second, third].concat();
+
+    let liabilities = vec![80, 20, 50, 10];
+    let aux_vec = compute_aux_vector(liabilities, 15);
+    assert!(compare_vecs(&aux_vec, &vec));
 }

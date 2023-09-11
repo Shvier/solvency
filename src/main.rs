@@ -1,3 +1,4 @@
+use std::borrow::BorrowMut;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use ark_ec::{VariableBaseMSM, CurveGroup};
@@ -10,8 +11,21 @@ use ark_ec::pairing::Pairing;
 use ark_std::{test_rng, start_timer, end_timer};
 use ark_std::rand::Rng;
 use ark_bls12_381::Fr as F;
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
+
+struct ConstraintsVerification {
+    p: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
+    i: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
+    w: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
+}
+
+impl ConstraintSynthesizer<F> for ConstraintsVerification {
+    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
+        Ok(())
+    }
+}
 
 fn main() {
     const DEGREE: usize = 64;

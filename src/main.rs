@@ -1,8 +1,7 @@
-use std::borrow::BorrowMut;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use ark_ec::{VariableBaseMSM, CurveGroup};
-use ark_ff::PrimeField;
+use ark_ff::{PrimeField, FftField, Field};
 use ark_poly_commit::kzg10::{KZG10, Powers, VerifierKey, Proof};
 use ark_bls12_381::Bls12_381;
 use ark_poly::{DenseUVPolynomial, EvaluationDomain, GeneralEvaluationDomain, Evaluations, Polynomial};
@@ -113,6 +112,19 @@ fn compute_aux_vector(liabilities: &Vec<u64>, max_bits: usize) -> Vec<u64> {
     vec
 }
 
+fn extend_coeff(p: &DensePolynomial<F>, mul: u64, add: u64) -> DensePolynomial<F> {
+    let mut new_coeffs = Vec::<F>::new();
+    let add_ff = F::from(add);
+    for (deg, coeff) in p.iter().enumerate() {
+        let mul_ff = F::from(mul);
+        let deg_u64 = u64::try_from(deg).unwrap();
+        let mul_deg = mul_ff.pow(&[deg_u64]);
+        let new_coeff = coeff * &mul_deg + &add_ff;
+        new_coeffs.push(new_coeff);
+    }
+    DensePolynomial::<F>::from_coefficients_vec(new_coeffs)
+}
+
 fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: DenseUVPolynomial<F>>(
     p: &P,
 ) -> (usize, Vec<F::BigInt>) {
@@ -192,6 +204,15 @@ fn compare_vecs(va: &[u64], vb: &[u64]) -> bool {
        .all(|(a,b)| *a == *b)
 }
 
+#[cfg(test)]
+fn get_aux_vector() -> Vec<u64> {
+    let total = vec![80];
+    let first = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 20, 60];
+    let second = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 6, 12, 25, 50, 10];
+    let third = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 0];
+    [total, first, second, third].concat()
+}
+
 #[test]
 fn test_build_up_bits() {
     let bits_8 = [0, 0, 1, 2, 5, 10, 20];
@@ -205,13 +226,28 @@ fn test_build_up_bits() {
 
 #[test]
 fn test_compute_aux_vector() {
-    let total = vec![80];
-    let first = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 20, 60];
-    let second = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 6, 12, 25, 50, 10];
-    let third = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 0];
-    let vec = [total, first, second, third].concat();
-
+    let vec = get_aux_vector();
     let liabilities = vec![80, 20, 50, 10];
     let aux_vec = compute_aux_vector(&liabilities, 15);
     assert!(compare_vecs(&aux_vec, &vec));
+}
+
+#[test]
+fn test_extend_coeff() {
+    const MUL: u64 = 16;
+    let i_vec = get_aux_vector();
+    let i = interpolate_poly(&i_vec);
+    let i_16x = extend_coeff(&i, MUL, 0);
+
+    let target = F::from(0);
+    assert!(i.evaluate(&target) == i_16x.evaluate(&target));
+
+    let target = F::from(1);
+    assert!(i.evaluate(&(target * F::from(MUL))) == i_16x.evaluate(&target));
+
+    let target = F::from(2);
+    assert!(i.evaluate(&(target * F::from(MUL))) == i_16x.evaluate(&target));
+
+    let target = F::from(3);
+    assert!(i.evaluate(&(target * F::from(MUL))) == i_16x.evaluate(&target));
 }

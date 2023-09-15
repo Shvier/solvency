@@ -7,7 +7,7 @@ use ark_bls12_381::Bls12_381;
 use ark_poly::{DenseUVPolynomial, EvaluationDomain, GeneralEvaluationDomain, Evaluations, Polynomial};
 use ark_poly::univariate::DensePolynomial;
 use ark_ec::pairing::Pairing;
-use ark_std::{test_rng, start_timer, end_timer};
+use ark_std::{test_rng, start_timer, end_timer, Zero};
 use ark_std::rand::Rng;
 use ark_bls12_381::Fr as F;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};

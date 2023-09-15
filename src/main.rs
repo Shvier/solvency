@@ -112,17 +112,19 @@ fn compute_aux_vector(liabilities: &Vec<u64>, max_bits: usize) -> Vec<u64> {
     vec
 }
 
-fn extend_coeff(p: &DensePolynomial<F>, mul: u64, add: u64) -> DensePolynomial<F> {
-    let mut new_coeffs = Vec::<F>::new();
+fn substitute_coeff(p: &DensePolynomial<F>, mul: u64, add: u64) -> DensePolynomial<F> {
+    // let mut new_coeffs = Vec::<F>::new();
     let add_ff = F::from(add);
-    for (deg, coeff) in p.iter().enumerate() {
-        let mul_ff = F::from(mul);
-        let deg_u64 = u64::try_from(deg).unwrap();
-        let mul_deg = mul_ff.pow(&[deg_u64]);
-        let new_coeff = coeff * &mul_deg + &add_ff;
-        new_coeffs.push(new_coeff);
+    let mul_ff = F::from(mul);
+    let mut new_p = DensePolynomial::<F>::zero();
+    let linear_term = DensePolynomial::<F>::from_coefficients_vec([add_ff, mul_ff].to_vec()); // mul * x + add
+    let mut squared_term = DensePolynomial::<F>::from_coefficients_vec([F::from(1)].to_vec());
+    for (_, coeff) in p.iter().enumerate() {
+        let term = &squared_term * *coeff;
+        new_p = &new_p + &term;
+        squared_term = &squared_term * &linear_term;
     }
-    DensePolynomial::<F>::from_coefficients_vec(new_coeffs)
+    new_p
 }
 
 fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: DenseUVPolynomial<F>>(
@@ -237,17 +239,24 @@ fn test_extend_coeff() {
     const MUL: u64 = 16;
     let i_vec = get_aux_vector();
     let i = interpolate_poly(&i_vec);
-    let i_16x = extend_coeff(&i, MUL, 0);
+    let i_16x = substitute_coeff(&i, MUL, 0);
 
     let target = F::from(0);
-    assert!(i.evaluate(&target) == i_16x.evaluate(&target));
+    assert_eq!(i.evaluate(&target), i_16x.evaluate(&target));
 
     let target = F::from(1);
-    assert!(i.evaluate(&(target * F::from(MUL))) == i_16x.evaluate(&target));
+    assert_eq!(i.evaluate(&(target * F::from(MUL))), i_16x.evaluate(&target));
 
     let target = F::from(2);
-    assert!(i.evaluate(&(target * F::from(MUL))) == i_16x.evaluate(&target));
+    assert_eq!(i.evaluate(&(target * F::from(MUL))), i_16x.evaluate(&target));
 
     let target = F::from(3);
-    assert!(i.evaluate(&(target * F::from(MUL))) == i_16x.evaluate(&target));
+    assert_eq!(i.evaluate(&(target * F::from(MUL))), i_16x.evaluate(&target));
+
+    let i_32x = substitute_coeff(&i, 32, 0);
+    assert_eq!(i.evaluate(&F::from(128)), i_16x.evaluate(&F::from(8)));
+    assert_eq!(i_16x.evaluate(&F::from(8)), i_32x.evaluate(&F::from(4)));
+
+    let i_16x_15 = substitute_coeff(&i, 16, 15);
+    assert_eq!(i.evaluate(&F::from(31)), i_16x_15.evaluate(&F::from(1)));
 }

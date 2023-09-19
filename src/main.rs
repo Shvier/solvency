@@ -1,13 +1,13 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use ark_ec::{VariableBaseMSM, CurveGroup};
-use ark_ff::{PrimeField, FftField, Field};
+use ark_ff::{PrimeField, FftField, Field, Zero};
 use ark_poly_commit::kzg10::{KZG10, Powers, VerifierKey, Proof};
 use ark_bls12_381::Bls12_381;
 use ark_poly::{DenseUVPolynomial, EvaluationDomain, Evaluations, Polynomial, Radix2EvaluationDomain};
 use ark_poly::univariate::DensePolynomial;
 use ark_ec::pairing::Pairing;
-use ark_std::{test_rng, start_timer, end_timer, Zero};
+use ark_std::{test_rng, start_timer, end_timer};
 use ark_std::rand::Rng;
 use ark_bls12_381::Fr as F;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
@@ -86,13 +86,13 @@ fn main() {
     println!("{}", result);
 
     // Generate aux vector
-    let aux_vector = compute_aux_vector(&[80, 1, 20, 2, 50, 3, 10].to_vec(), 15);
+    let aux_vector = compute_aux_vector(&liabilities, 15);
     let domain = D::new(aux_vector.len()).unwrap();
     let domain_size = domain.size;
     let root_of_unity = F::get_root_of_unity(domain_size).unwrap();
 
-    let raise_root = |power: u64| -> F {
-        root_of_unity.pow(&[power])
+    let raise = |root: F, power: u64| -> F {
+        root.pow(&[power])
     };
 
     let i = interpolate_poly(&aux_vector, domain);
@@ -101,6 +101,9 @@ fn main() {
     let i_16x_15 = substitute_x(&i, 16, 15);
     let i_16x_16 = substitute_x(&i, 16, 16);
     let w1 = &(&i_16x - &i_16x_15) - &i_16x_16;
+    let root = F::get_root_of_unity(domain_size/16).unwrap();
+    let result: F = w1.evaluate(&raise(root, 1));
+    println!("w1 is zero? {}", result.is_zero());
 }
 
 fn interpolate_poly(vectors: &Vec<u64>, domain: D) -> DensePolynomial<F> {

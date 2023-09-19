@@ -4,7 +4,7 @@ use ark_ec::{VariableBaseMSM, CurveGroup};
 use ark_ff::{PrimeField, FftField, Field};
 use ark_poly_commit::kzg10::{KZG10, Powers, VerifierKey, Proof};
 use ark_bls12_381::Bls12_381;
-use ark_poly::{DenseUVPolynomial, EvaluationDomain, GeneralEvaluationDomain, Evaluations, Polynomial};
+use ark_poly::{DenseUVPolynomial, EvaluationDomain, Evaluations, Polynomial, Radix2EvaluationDomain};
 use ark_poly::univariate::DensePolynomial;
 use ark_ec::pairing::Pairing;
 use ark_std::{test_rng, start_timer, end_timer, Zero};
@@ -13,6 +13,7 @@ use ark_bls12_381::Fr as F;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
+type D = Radix2EvaluationDomain::<F>;
 
 struct ConstraintsVerification {
     p: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
@@ -43,7 +44,8 @@ fn main() {
 
     // Convert liabilities into vectors and interpolate P
     let liabilities = generate_liabilities();
-    let p: DensePolynomial<ark_ff::Fp<ark_ff::MontBackend<ark_bls12_381::FrConfig, 4>, 4>> = interpolate_poly(&liabilities);
+    let domain = D::new(liabilities.len()).unwrap();
+    let p: DensePolynomial<ark_ff::Fp<ark_ff::MontBackend<ark_bls12_381::FrConfig, 4>, 4>> = interpolate_poly(&liabilities, domain);
     println!("P coeffs size: {}", p.coeffs.len());
 
     // Commit to P
@@ -84,13 +86,24 @@ fn main() {
     println!("{}", result);
 
     // Generate aux vector
-    let aux_vector = compute_aux_vector(&liabilities, 15);
-    let i = interpolate_poly(&aux_vector);
+    let aux_vector = compute_aux_vector(&[80, 1, 20, 2, 50, 3, 10].to_vec(), 15);
+    let domain = D::new(aux_vector.len()).unwrap();
+    let domain_size = domain.size;
+    let root_of_unity = F::get_root_of_unity(domain_size).unwrap();
+
+    let raise_root = |power: u64| -> F {
+        root_of_unity.pow(&[power])
+    };
+
+    let i = interpolate_poly(&aux_vector, domain);
+
+    let i_16x = substitute_x(&i, 16, 0);
+    let i_16x_15 = substitute_x(&i, 16, 15);
+    let i_16x_16 = substitute_x(&i, 16, 16);
+    let w1 = &(&i_16x - &i_16x_15) - &i_16x_16;
 }
 
-fn interpolate_poly(vectors: &Vec<u64>) -> DensePolynomial<F> {
-    type D = GeneralEvaluationDomain::<F>;
-    let domain = D::new(vectors.len()).unwrap();
+fn interpolate_poly(vectors: &Vec<u64>, domain: D) -> DensePolynomial<F> {
     let ff_vectors = vectors.into_iter().map(|v| {F::from(*v)}).collect();
     let evaluations = Evaluations::from_vec_and_domain(ff_vectors, domain);
     evaluations.interpolate()
@@ -112,19 +125,21 @@ fn compute_aux_vector(liabilities: &Vec<u64>, max_bits: usize) -> Vec<u64> {
     vec
 }
 
-fn substitute_coeff(p: &DensePolynomial<F>, mul: u64, add: u64) -> DensePolynomial<F> {
-    // let mut new_coeffs = Vec::<F>::new();
-    let add_ff = F::from(add);
-    let mul_ff = F::from(mul);
-    let mut new_p = DensePolynomial::<F>::zero();
-    let linear_term = DensePolynomial::<F>::from_coefficients_vec([add_ff, mul_ff].to_vec()); // mul * x + add
-    let mut squared_term = DensePolynomial::<F>::from_coefficients_vec([F::from(1)].to_vec());
-    for (_, coeff) in p.iter().enumerate() {
-        let term = &squared_term * *coeff;
-        new_p = &new_p + &term;
-        squared_term = &squared_term * &linear_term;
+fn substitute_x(p: &DensePolynomial<F>, mul: usize, add: usize) -> DensePolynomial<F> {
+    let deg = p.coeffs.len();
+    let old_domain = D::new(deg).unwrap();
+    let old_evals = p.clone().evaluate_over_domain(old_domain).evals;
+    let old_domain_size = old_domain.size as usize;
+    let new_domain_size = old_domain_size / mul;
+    let new_domain = D::new(new_domain_size).unwrap();
+    let mut new_evals = Vec::<F>::new();
+    let mut idx = add;
+    while idx < old_evals.len() {
+        new_evals.push(old_evals[idx]);
+        idx += mul;
     }
-    new_p
+    let new_eval = Evaluations::<F, D>::from_vec_and_domain(new_evals, new_domain);
+    new_eval.interpolate()
 }
 
 fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: DenseUVPolynomial<F>>(
@@ -235,28 +250,27 @@ fn test_compute_aux_vector() {
 }
 
 #[test]
-fn test_extend_coeff() {
+fn test_substitute_x() {
     const MUL: u64 = 16;
     let i_vec = get_aux_vector();
-    let i = interpolate_poly(&i_vec);
-    let i_16x = substitute_coeff(&i, MUL, 0);
+    let domain = D::new(i_vec.len()).unwrap();
+    let domain_size = domain.size as u64;
+    let root_of_unity = F::get_root_of_unity(domain_size).unwrap();
+    let raise = |root: F, power: u64| -> F {
+        root.pow(&[power])
+    };
 
-    let target = F::from(0);
-    assert_eq!(i.evaluate(&target), i_16x.evaluate(&target));
+    let i = interpolate_poly(&i_vec, domain);
+    let i_16x: DensePolynomial<ark_ff::Fp<ark_ff::MontBackend<ark_bls12_381::FrConfig, 4>, 4>> = substitute_x(&i, MUL as usize, 0);
+    let i_16x_15: DensePolynomial<ark_ff::Fp<ark_ff::MontBackend<ark_bls12_381::FrConfig, 4>, 4>> = substitute_x(&i, MUL as usize, 15);
 
-    let target = F::from(1);
-    assert_eq!(i.evaluate(&(target * F::from(MUL))), i_16x.evaluate(&target));
+    let root = F::get_root_of_unity(domain_size/MUL).unwrap();
 
-    let target = F::from(2);
-    assert_eq!(i.evaluate(&(target * F::from(MUL))), i_16x.evaluate(&target));
+    assert_eq!(i.evaluate(&raise(root_of_unity, 0)), i_16x.evaluate(&raise(root, 0)));
 
-    let target = F::from(3);
-    assert_eq!(i.evaluate(&(target * F::from(MUL))), i_16x.evaluate(&target));
+    assert_eq!(i.evaluate(&raise(root_of_unity, 16)), i_16x.evaluate(&raise(root, 1)));
 
-    let i_32x = substitute_coeff(&i, 32, 0);
-    assert_eq!(i.evaluate(&F::from(128)), i_16x.evaluate(&F::from(8)));
-    assert_eq!(i_16x.evaluate(&F::from(8)), i_32x.evaluate(&F::from(4)));
+    assert_eq!(i.evaluate(&raise(root_of_unity, 15)), i_16x_15.evaluate(&raise(root, 0)));
 
-    let i_16x_15 = substitute_coeff(&i, 16, 15);
-    assert_eq!(i.evaluate(&F::from(31)), i_16x_15.evaluate(&F::from(1)));
+    assert_eq!(i.evaluate(&raise(root_of_unity, 31)), i_16x_15.evaluate(&raise(root, 1)));
 }

@@ -101,9 +101,56 @@ fn main() {
     let i_16x_15 = substitute_x(&i, 16, 15);
     let i_16x_16 = substitute_x(&i, 16, 16);
     let w1 = &(&i_16x - &i_16x_15) - &i_16x_16;
-    let root = F::get_root_of_unity(domain_size/16).unwrap();
-    let result: F = w1.evaluate(&raise(root, 1));
+    let result: F = w1.evaluate(&raise(root_of_unity, 2));
     println!("w1 is zero? {}", result.is_zero());
+
+    let i_1 = substitute_x(&i, 1, 1);
+    let double_i = &i * F::from(2);
+    let first = &double_i - &i_1;
+    let mut i_1_minus_1 = i_1.clone();
+    i_1_minus_1.coeffs[0] -= F::from(1);
+    let mut double_i_plus_1 = double_i.clone();
+    double_i_plus_1.coeffs[0] += F::from(1);
+    let second = &double_i_plus_1 - &i_1;
+
+    let linear = DensePolynomial::<F>::from_coefficients_vec([F::from(0), F::from(1)].to_vec());
+    let mut w2 = &first * &second;
+
+    let power = aux_vector.len();
+    let mut powers_of_unity = vec![F::from(0); power];
+    for i in (0..power).step_by(16) {
+        if i == 0 {
+            powers_of_unity[0] = root_of_unity.pow(&[power as u64]);
+            continue;
+        }
+        let idx = i - 1;
+        powers_of_unity[idx] = root_of_unity.pow(&[idx as u64]);
+    }
+    let evals = Evaluations::<F, D>::from_vec_and_domain(powers_of_unity.clone(), domain);
+    let vanishing_poly_15x = evals.interpolate();
+
+    let mut powers_of_unity = vec![F::from(0); power];
+    for i in 0..power {
+        if i % 16 == 0 {
+            powers_of_unity[i] = root_of_unity.pow(&[i as u64]);
+        }
+    }
+    let evals = Evaluations::<F, D>::from_vec_and_domain(powers_of_unity.clone(), domain);
+    let vanishing_poly_16x = evals.interpolate();
+
+    let third = &linear - &vanishing_poly_15x;
+    let fourth = &linear - &vanishing_poly_16x;
+    w2 = &w2 * &third;
+    w2 = &w2 * &fourth;
+
+    for idx in 0..aux_vector.len() {
+        let point = raise(root_of_unity, idx as u64);
+        if !w2.evaluate(&point).is_zero() {
+            println!("w2 idx: {} is not zero", idx);
+        }
+    }
+    let i_15x = substitute_x(&i, 15, 0);
+    let p_2x = substitute_x(&p, 2, 0);
 }
 
 fn interpolate_poly(vectors: &Vec<u64>, domain: D) -> DensePolynomial<F> {

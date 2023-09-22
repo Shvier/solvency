@@ -11,6 +11,7 @@ use ark_std::{test_rng, start_timer, end_timer};
 use ark_std::rand::Rng;
 use ark_bls12_381::Fr as F;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_std::UniformRand;
 
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
 type D = Radix2EvaluationDomain::<F>;
@@ -146,12 +147,23 @@ fn main() {
             println!("w2 idx: {} is not zero", idx);
         }
     }
-    let i_15x = substitute_x(&i, 16, 0);
+    let i_16x = substitute_x(&i, 16, 0);
     let p_2x = substitute_x(&p, 2, 0);
+    let w3 = &i_16x - &p_2x;
     for idx in 0..aux_vector.len() {
         let target = raise(root_of_unity, idx as u64);
-        if !(i_15x.evaluate(&target) == p_2x.evaluate(&target)) {
-            println!("i_15x {} != p_2x {}", idx*15, idx*2);
+        if !(w3.evaluate(&target).is_zero()) {
+            println!("i_16x {} != p_2x {}", idx*16, idx*2);
+        }
+    }
+
+    let epsilon = F::rand(rng);
+    let mut w = &w1 + &(&w2 * epsilon);
+    w = &w + &(&w3 * raise(epsilon, 2));
+    for idx in 0..aux_vector.len() {
+        let target = raise(root_of_unity, idx as u64);
+        if !(w.evaluate(&target).is_zero()) {
+            println!("w3 is not zero at {}", idx);
         }
     }
 }

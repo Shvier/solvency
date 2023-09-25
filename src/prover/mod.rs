@@ -11,10 +11,10 @@ use ark_ff::{PrimeField};
 
 use crate::Error;
 
-pub(crate) mod data_structures;
+pub mod data_structures;
 use data_structures::*;
 
-pub(crate) mod solvency;
+pub mod solvency;
 
 mod utils;
 use utils::*;

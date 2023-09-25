@@ -4,22 +4,25 @@ use ark_ec::{VariableBaseMSM, CurveGroup};
 use ark_ff::{PrimeField, FftField, Field, Zero};
 use ark_poly_commit::kzg10::{KZG10, Powers, VerifierKey, Proof};
 use ark_bls12_381::Bls12_381;
-use ark_poly::{DenseUVPolynomial, EvaluationDomain, Evaluations, Polynomial, Radix2EvaluationDomain};
+use ark_poly::{DenseUVPolynomial, EvaluationDomain, Evaluations, Polynomial, Radix2EvaluationDomain, GeneralEvaluationDomain};
 use ark_poly::univariate::DensePolynomial;
 use ark_ec::pairing::Pairing;
 use ark_std::{test_rng, start_timer, end_timer};
 use ark_std::rand::Rng;
 use ark_bls12_381::Fr as F;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::UniformRand;
+use solvency::prover;
 
+use prover::data_structures::Prover;
+
+#[allow(non_camel_case_types)]
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
+
 type D = Radix2EvaluationDomain::<F>;
 
 struct ConstraintsVerification {
-    p: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
-    i: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
-    w: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
+    quotient_p: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
+    quotient_w: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
 }
 
 impl ConstraintSynthesizer<F> for ConstraintsVerification {
@@ -29,201 +32,21 @@ impl ConstraintSynthesizer<F> for ConstraintsVerification {
 }
 
 fn main() {
-    const DEGREE: usize = 64;
+    const MAX_BITS: usize = 16;
+    const MAX_DEGREE: usize = 64;
 
     // KZG trusted setup
     let rng = &mut test_rng();
-    let params = KZG10::<Bls12_381, UniPoly_381>::setup(DEGREE, false, rng).expect("Setup failed");
-    let powers_of_g = params.powers_of_g[..=DEGREE].to_vec();
-    let powers_of_gamma_g = (0..=DEGREE)
-        .map(|i| params.powers_of_gamma_g[&i])
-        .collect();
-    let powers = Powers {
-        powers_of_g: ark_std::borrow::Cow::Owned(powers_of_g),
-        powers_of_gamma_g: ark_std::borrow::Cow::Owned(powers_of_gamma_g),
-    };
+    
+
+    let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(MAX_DEGREE, false, rng).expect("Setup failed");
 
     // Convert liabilities into vectors and interpolate P
     let liabilities = generate_liabilities();
-    let domain = D::new(liabilities.len()).unwrap();
-    let p = interpolate_poly(&liabilities, domain);
-    println!("P coeffs size: {}", p.coeffs.len());
+    // let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
+    let domain = D::new(liabilities.len()).expect("Unsupported domain length");
 
-    // Commit to P
-    let (com, r) = KZG10::<Bls12_381, UniPoly_381>::commit(&powers, &p, None, None).expect("Commitment failed");
-
-    // The point at index 0
-    let point = F::from(0);
-    let value = p.evaluate(&point);
-
-    // Compute witness for the point
-    let (witness, _): (UniPoly_381, Option<UniPoly_381>) = KZG10::<Bls12_381, UniPoly_381>::compute_witness_polynomial(&p, point, &r).unwrap();
-
-    let (num_leading_zeros, witness_coeffs) = skip_leading_zeros_and_convert_to_bigints(&witness);
-    let witness_comm_time = start_timer!(|| "Computing commitment to witness polynomial");
-    let w = <<Bls12_381 as Pairing>::G1 as VariableBaseMSM>::msm_bigint(
-        &powers.powers_of_g[num_leading_zeros..],
-        &witness_coeffs,
-    );
-    end_timer!(witness_comm_time);
-
-    // Generate the proof
-    let vk = VerifierKey {
-        g: params.powers_of_g[0],
-        gamma_g: params.powers_of_gamma_g[&0],
-        h: params.h,
-        beta_h: params.beta_h,
-        prepared_h: params.prepared_h.clone(),
-        prepared_beta_h: params.prepared_beta_h.clone(),
-    };
-
-    let proof = Proof {
-        w: w.into_affine(),
-        random_v: None,
-    };
-
-    // Verify the proof
-    let result = KZG10::<Bls12_381, UniPoly_381>::check(&vk, &com, point, value, &proof).unwrap();
-    println!("{}", result);
-
-    // Generate aux vector
-    let aux_vector = compute_aux_vector(&liabilities, 15);
-    let domain = D::new(aux_vector.len()).unwrap();
-    let domain_size = domain.size;
-    let root_of_unity = F::get_root_of_unity(domain_size).unwrap();
-
-    let raise = |root: F, power: u64| -> F {
-        root.pow(&[power])
-    };
-
-    let i = interpolate_poly(&aux_vector, domain);
-
-    let i_16x_1 = substitute_x(&i, 16, 1);
-    let i_16x_16 = substitute_x(&i, 16, 16);
-    let i_16x_17 = substitute_x(&i, 16, 17);
-    let w1 = &(&i_16x_1 - &i_16x_16) - &i_16x_17;
-    for idx in 0..aux_vector.len() {
-        let point = raise(root_of_unity, idx as u64);
-        if !w1.evaluate(&point).is_zero() {
-            println!("w1 idx: {} is not zero", idx);
-        }
-    }
-
-    let i_1 = substitute_x(&i, 1, 1);
-    let double_i = &i * F::from(2);
-    let first = &double_i - &i_1;
-    let mut i_1_minus_1 = i_1.clone();
-    i_1_minus_1.coeffs[0] -= F::from(1);
-    let mut double_i_plus_1 = double_i.clone();
-    double_i_plus_1.coeffs[0] += F::from(1);
-    let second = &double_i_plus_1 - &i_1;
-
-    let linear = DensePolynomial::<F>::from_coefficients_vec([F::from(0), F::from(1)].to_vec());
-    let mut w2 = &first * &second;
-
-    let power = aux_vector.len();
-    let mut powers_of_unity = vec![F::from(0); power];
-    for i in (0..power).step_by(16) {
-        powers_of_unity[i] = root_of_unity.pow(&[i as u64]);
-    }
-    let evals = Evaluations::<F, D>::from_vec_and_domain(powers_of_unity.clone(), domain);
-    let vanishing_poly_16x = evals.interpolate();
-
-    let mut powers_of_unity = vec![F::from(0); power];
-    for i in (1..power).step_by(16) {
-        powers_of_unity[i] = root_of_unity.pow(&[i as u64]);
-    }
-    let evals = Evaluations::<F, D>::from_vec_and_domain(powers_of_unity.clone(), domain);
-    let vanishing_poly_16x_1 = evals.interpolate();
-
-    let third = &linear - &vanishing_poly_16x;
-    let fourth = &linear - &vanishing_poly_16x_1;
-    w2 = &w2 * &third;
-    w2 = &w2 * &fourth;
-
-    for idx in 0..aux_vector.len() {
-        let point = raise(root_of_unity, idx as u64);
-        if !w2.evaluate(&point).is_zero() {
-            println!("w2 idx: {} is not zero", idx);
-        }
-    }
-    let i_16x = substitute_x(&i, 16, 0);
-    let p_2x = substitute_x(&p, 2, 0);
-    let w3 = &i_16x - &p_2x;
-    for idx in 0..aux_vector.len() {
-        let target = raise(root_of_unity, idx as u64);
-        if !(w3.evaluate(&target).is_zero()) {
-            println!("i_16x {} != p_2x {}", idx*16, idx*2);
-        }
-    }
-
-    let epsilon = F::rand(rng);
-    let mut w = &w1 + &(&w2 * epsilon);
-    w = &w + &(&w3 * raise(epsilon, 2));
-    for idx in 0..aux_vector.len() {
-        let target = raise(root_of_unity, idx as u64);
-        if !(w.evaluate(&target).is_zero()) {
-            println!("w3 is not zero at {}", idx);
-        }
-    }
-}
-
-fn interpolate_poly(vectors: &Vec<u64>, domain: D) -> DensePolynomial<F> {
-    let ff_vectors = vectors.into_iter().map(|v| {F::from(*v)}).collect();
-    let evaluations = Evaluations::from_vec_and_domain(ff_vectors, domain);
-    evaluations.interpolate()
-}
-
-fn compute_aux_vector(liabilities: &Vec<u64>, max_bits: usize) -> Vec<u64> {
-    let mut vec = Vec::<u64>::new();
-    vec.push(liabilities[0]);
-    vec.push(liabilities[0]);
-    let mut remanent = liabilities[0];
-    for i in (2..liabilities.len()).step_by(2) {
-        let liability = liabilities[i];
-        let bits = build_up_bits(liability, max_bits);
-        vec.extend_from_slice(&bits);
-        vec.push(remanent - liability);
-        remanent -= liability;
-    }
-    vec
-}
-
-fn substitute_x(p: &DensePolynomial<F>, mul: usize, add: usize) -> DensePolynomial<F> {
-    let deg = p.coeffs.len();
-    let old_domain = D::new(deg).unwrap();
-    let old_evals = p.clone().evaluate_over_domain(old_domain).evals;
-    let old_domain_size = old_domain.size as usize;
-    let new_domain_size = old_domain_size / mul;
-    let new_domain = D::new(new_domain_size).unwrap();
-    let mut new_evals = Vec::<F>::new();
-    let mut idx = add;
-    while idx < old_evals.len() {
-        new_evals.push(old_evals[idx]);
-        idx += mul;
-    }
-    let new_eval = Evaluations::<F, D>::from_vec_and_domain(new_evals, new_domain);
-    new_eval.interpolate()
-}
-
-fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: DenseUVPolynomial<F>>(
-    p: &P,
-) -> (usize, Vec<F::BigInt>) {
-    let mut num_leading_zeros = 0;
-    while num_leading_zeros < p.coeffs().len() && p.coeffs()[num_leading_zeros].is_zero() {
-        num_leading_zeros += 1;
-    }
-    let coeffs = convert_to_bigints(&p.coeffs()[num_leading_zeros..]);
-    (num_leading_zeros, coeffs)
-}
-
-fn convert_to_bigints<F: PrimeField>(p: &[F]) -> Vec<F::BigInt> {
-    let to_bigint_time = start_timer!(|| "Converting polynomial coeffs to bigints");
-    let coeffs = ark_std::cfg_iter!(p)
-        .map(|s| s.into_bigint())
-        .collect::<Vec<_>>();
-    end_timer!(to_bigint_time);
-    coeffs
+    let prover = Prover::setup(domain, pcs, liabilities, MAX_BITS, MAX_DEGREE);
 }
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
@@ -255,86 +78,4 @@ fn generate_liabilities() -> Vec<u64> {
     vectors.push(total);
     vectors.reverse();
     vectors
-}
-
-fn build_up_bits(value: u64, max_bits: usize) -> Vec<u64> {
-    assert!(value <= 2_u64.pow(u32::try_from(max_bits).unwrap()));
-    let mut bits: Vec<u64> = Vec::with_capacity(max_bits);
-    for _ in 0..max_bits {
-        bits.push(0);
-    }
-    let mut v = value;
-    bits[max_bits - 1] = value;
-    let mut i = bits.len() - 2;
-    loop {
-        bits[i] = v / 2;
-        v = bits[i];
-        if i == 0 {
-            break;
-        }
-        i -= 1;
-    }
-    bits
-}
-
-#[cfg(test)]
-fn compare_vecs(va: &[u64], vb: &[u64]) -> bool {
-    (va.len() == vb.len()) &&
-     va.iter()
-       .zip(vb)
-       .all(|(a,b)| *a == *b)
-}
-
-#[cfg(test)]
-fn get_aux_vector() -> Vec<u64> {
-    let total = vec![80];
-    let first = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 20, 60];
-    let second = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 6, 12, 25, 50, 10];
-    let third = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 0];
-    [total, first, second, third].concat()
-}
-
-#[test]
-fn test_build_up_bits() {
-    let bits_8 = [0, 0, 1, 2, 5, 10, 20];
-    let bits = build_up_bits(20, 7);
-    assert!(compare_vecs(&bits_8, &bits));
-
-    let bits_16 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 6, 12, 25, 50];
-    let bits = build_up_bits(50, 15);
-    assert!(compare_vecs(&bits_16, &bits));
-}
-
-#[test]
-fn test_compute_aux_vector() {
-    let vec = get_aux_vector();
-    let liabilities = vec![80, 20, 50, 10];
-    let aux_vec = compute_aux_vector(&liabilities, 15);
-    assert!(compare_vecs(&aux_vec, &vec));
-}
-
-#[test]
-fn test_substitute_x() {
-    const MUL: u64 = 16;
-    let i_vec = get_aux_vector();
-    let domain = D::new(i_vec.len()).unwrap();
-    let domain_size = domain.size as u64;
-    let root_of_unity = F::get_root_of_unity(domain_size).unwrap();
-    let raise = |root: F, power: u64| -> F {
-        root.pow(&[power])
-    };
-
-    let i = interpolate_poly(&i_vec, domain);
-    let i_16x: DensePolynomial<ark_ff::Fp<ark_ff::MontBackend<ark_bls12_381::FrConfig, 4>, 4>> = substitute_x(&i, MUL as usize, 0);
-    let i_16x_15: DensePolynomial<ark_ff::Fp<ark_ff::MontBackend<ark_bls12_381::FrConfig, 4>, 4>> = substitute_x(&i, MUL as usize, 15);
-
-    let root = F::get_root_of_unity(domain_size/MUL).unwrap();
-
-    assert_eq!(i.evaluate(&raise(root_of_unity, 0)), i_16x.evaluate(&raise(root, 0)));
-
-    assert_eq!(i.evaluate(&raise(root_of_unity, 16)), i_16x.evaluate(&raise(root, 1)));
-
-    assert_eq!(i.evaluate(&raise(root_of_unity, 15)), i_16x_15.evaluate(&raise(root, 0)));
-
-    assert_eq!(i.evaluate(&raise(root_of_unity, 31)), i_16x_15.evaluate(&raise(root, 1)));
 }

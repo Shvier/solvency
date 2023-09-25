@@ -1,4 +1,3 @@
-use crate::Error;
 use ark_ec::{VariableBaseMSM, CurveGroup};
 use ark_ec::pairing::Pairing;
 use ark_poly::{Radix2EvaluationDomain, Evaluations, EvaluationDomain, DenseUVPolynomial, Polynomial};
@@ -10,10 +9,12 @@ use ark_std::{fmt, vec::Vec, start_timer, end_timer};
 use ark_poly::univariate::DensePolynomial;
 use ark_ff::{PrimeField};
 
-mod data_structures;
+use crate::Error;
+
+pub(crate) mod data_structures;
 use data_structures::*;
 
-mod solvency;
+pub(crate) mod solvency;
 
 mod utils;
 use utils::*;

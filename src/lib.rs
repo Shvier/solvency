@@ -1,4 +1,4 @@
 pub mod error;
-pub use error::*;
-
+use error::*;
 pub mod prover;
+use prover::*;

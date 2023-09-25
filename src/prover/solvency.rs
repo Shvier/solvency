@@ -26,8 +26,6 @@ impl Prover<'_> {
         let domain = self.domain;
         let aux_vec = &self.aux_vec;
 
-        // i(scale_factor * x)
-        let i_scaled = substitute_x::<F, D>(&i, scale_factor, 0);
         // i(x + 1)
         let i_shifted_1 = substitute_x::<F, D>(&i, 1, 1);
         // i(x) * 2
@@ -68,6 +66,20 @@ impl Prover<'_> {
         w2
     }
 
+    pub fn compute_w3(&self) -> DensePolynomial<F> {
+        let scale_factor = self.max_bits + 1;
+        let i = &self.i;
+        let p = &self.p;
+
+        // i(scale_factor * x)
+        let i_scaled = substitute_x::<F, D>(&i, scale_factor, 0);
+        // p(omega^(2i)), all the values at even positions, that is, each user balance
+        let p_even = substitute_x::<F, D>(&p, 2, 0);
+        &i_scaled - &p_even
+    }    
+}
+
+impl Prover<'_> {
     #[inline]
     fn add_assign(p: DensePolynomial<F>, element: u64, negative: bool) -> DensePolynomial<F> {
         let mut new_p = p.clone();
@@ -113,5 +125,23 @@ fn test_compute_w2() {
     for idx in 0..aux_vec.len() {
         let point = root_of_unity.pow(&[idx as u64]);
         assert!(w2.evaluate(&point).is_zero());
+    }
+}
+
+#[test]
+fn test_compute_w3() {
+    use ark_ff::{FftField, Field};
+    use ark_poly::Polynomial;
+    use ark_std::Zero;
+
+    let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
+    let aux_vec = compute_aux_vector(&liabilities, 15);
+    let domain = D::new(liabilities.len()).expect("Unsupported domain length");
+    let prover = generate_prover();
+    let w3 = prover.compute_w3();
+    let root_of_unity = F::get_root_of_unity(domain.size).unwrap();
+    for idx in 0..aux_vec.len() {
+        let point = root_of_unity.pow(&[idx as u64]);
+        assert!(w3.evaluate(&point).is_zero());
     }
 }

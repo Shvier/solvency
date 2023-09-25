@@ -10,6 +10,11 @@ use ark_std::{fmt, vec::Vec, start_timer, end_timer};
 use ark_poly::univariate::DensePolynomial;
 use ark_ff::{PrimeField};
 
+mod data_structures;
+use data_structures::*;
+
+mod solvency;
+
 mod utils;
 use utils::*;
 
@@ -17,14 +22,6 @@ use utils::*;
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
 
 type D = Radix2EvaluationDomain::<F>;
-
-struct Prover<'a> {
-    pcs: UniversalParams<Bls12_381>,
-    max_bits: usize,
-    max_degree: usize,
-    p: DensePolynomial<F>,
-    powers: Powers<'a, Bls12_381>,
-}
 
 impl Prover<'_> {
     pub fn setup(
@@ -35,7 +32,6 @@ impl Prover<'_> {
         max_degree: usize,
     ) -> Result<Self, Error> {
         let p = interpolate_poly(&liabilities, domain);
-        let aux_vec = compute_aux_vector(&liabilities, max_bits);
         let powers_of_g = pcs.powers_of_g[..=max_degree].to_vec();
         let powers_of_gamma_g = (0..=max_degree)
             .map(|i| pcs.powers_of_gamma_g[&i])
@@ -44,7 +40,10 @@ impl Prover<'_> {
             powers_of_g: Cow::Owned(powers_of_g),
             powers_of_gamma_g: Cow::Owned(powers_of_gamma_g),
         };
-        Ok(Self { pcs, max_bits, max_degree, p, powers })
+        let aux_vec = compute_aux_vector(&liabilities, max_bits);
+        let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
+        let i = interpolate_poly(&aux_vec, domain);
+        Ok(Self { pcs, max_bits, max_degree, p, i, powers, liabilities })
     }
 
     pub fn commit(

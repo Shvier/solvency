@@ -54,8 +54,8 @@ F: FftField,
 D: EvaluationDomain<F>,
 >(
     p: &DensePolynomial<F>, 
-    mul: usize, 
-    add: usize
+    scale: usize, 
+    shift: usize
 ) -> DensePolynomial<F> {
     let deg = p.coeffs.len();
     let old_domain = D::new(deg).unwrap();
@@ -65,13 +65,13 @@ D: EvaluationDomain<F>,
     } else {
         deg.checked_next_power_of_two().expect("Unsatified next power of two")
     } as usize;
-    let new_domain_size = old_domain_size / mul;
+    let new_domain_size = old_domain_size / scale;
     let new_domain = D::new(new_domain_size).expect("Unsupported domain size");
     let mut new_evals = Vec::<F>::new();
-    let mut idx = add;
+    let mut idx = shift;
     while idx < old_evals.len() {
         new_evals.push(old_evals[idx]);
-        idx += mul;
+        idx += scale;
     }
     let new_eval = Evaluations::<F, D>::from_vec_and_domain(new_evals, new_domain);
     new_eval.interpolate()

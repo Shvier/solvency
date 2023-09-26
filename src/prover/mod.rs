@@ -28,7 +28,7 @@ impl Prover<'_> {
     pub fn setup(
         domain: D,
         pcs: UniversalParams<Bls12_381>,
-        liabilities: Vec<u64>,
+        liabilities: &Vec<u64>,
         max_bits: usize,
         max_degree: usize,
     ) -> Result<Self, Error> {
@@ -44,7 +44,7 @@ impl Prover<'_> {
         let aux_vec = compute_aux_vector(&liabilities, max_bits);
         let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
         let i = interpolate_poly(&aux_vec, domain);
-        Ok(Self { domain, pcs, max_bits, max_degree, p, i, powers, liabilities, aux_vec })
+        Ok(Self { domain, pcs, max_bits, max_degree, p, i, powers, liabilities: liabilities.to_vec(), aux_vec })
     }
 
     pub fn commit(
@@ -114,7 +114,7 @@ fn convert_to_bigints<F: PrimeField>(p: &[F]) -> Vec<F::BigInt> {
 }
 
 #[test]
-fn test_setup() {
+fn test_proof() {
     use ark_std::test_rng;
     
     type D = Radix2EvaluationDomain::<F>;
@@ -126,7 +126,7 @@ fn test_setup() {
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
     let domain = D::new(liabilities.len()).expect("Unsupported domain length");
-    let prover = Prover::setup(domain, pcs, liabilities, MAX_BITS, MAX_DEGREE).unwrap();
+    let prover = Prover::setup(domain, pcs, &liabilities, MAX_BITS, MAX_DEGREE).unwrap();
     let (com, r) = prover.commit().expect("Commitment failed");
     let point = F::from(2);
     let value = prover.p.evaluate(&point);

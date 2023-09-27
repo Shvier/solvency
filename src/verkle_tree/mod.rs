@@ -71,8 +71,11 @@ impl VerkleRoot {
         max_bits: usize, 
         max_degree: usize,
     ) -> Result<Self, Error> {
-        let mut vectors = liabilities.clone();
-        let mut total = liabilities[0];
+        let mut vectors = match liabilities.len() {
+            0 => { [0].to_vec() }
+            _ => { liabilities.clone() }
+        };
+        let mut total = vectors[0];
         for group in &groups {
             let hash_value_com = calculate_hash(&group.com_p);
             vectors.push(hash_value_com);
@@ -184,6 +187,9 @@ fn test_verkle_root() {
     let group_1 = generate_verkle_group();
     let group_2 = generate_verkle_group();
     let groups = [group_1, group_2].to_vec();
+    let verkle_root = VerkleRoot::setup(rng, pcs.clone(), [].to_vec(), groups.clone(), MAX_BITS, MAX_DEGREE).expect("Root setup failed");
+    assert_eq!(verkle_root.root.value, 160);
+
     let verkle_root = VerkleRoot::setup(rng, pcs, liabilities.clone(), groups.clone(), MAX_BITS, MAX_DEGREE).expect("Root setup failed");
     assert_eq!(verkle_root.root.value, 240);
 

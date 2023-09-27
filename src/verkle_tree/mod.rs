@@ -18,6 +18,7 @@ type D = Radix2EvaluationDomain::<F>;
 #[allow(non_camel_case_types)]
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
 
+#[derive(Clone)]
 pub struct VerkleGroup {
     pub root: VerkleNode,
     pub com_p: Commitment<Bls12<Config>>,
@@ -39,11 +40,11 @@ impl VerkleGroup {
 
         let prover = Prover::setup(domain, pcs, &liabilities, max_bits, max_degree).unwrap();
         let p = prover.p.clone();
-        let (com_p, r_p) = prover.commit(&p, rng, max_degree).expect("Commitment to p failed");
+        let (com_p, r_p) = prover.commit(&p, rng, max_degree).expect("Commitment to P failed");
         let epsilon = F::rand(rng);
         let w = prover.compute_w(epsilon);
         let number_of_w_coeffs: usize = w.coeffs.len();
-        let (com_w, r_w) = prover.commit(&w, rng, number_of_w_coeffs).expect("Commitment to w failed");
+        let (com_w, r_w) = prover.commit(&w, rng, number_of_w_coeffs).expect("Commitment to W failed");
 
         let nodes = generate_nodes_from(&liabilities);
 
@@ -85,11 +86,11 @@ impl VerkleRoot {
 
         let prover = Prover::setup(domain, pcs, &vectors, max_bits, max_degree).unwrap();
         let r = prover.p.clone();
-        let (com_r, r_r) = prover.commit(&r, rng, max_degree).expect("Commitment to r failed");
+        let (com_r, r_r) = prover.commit(&r, rng, max_degree).expect("Commitment to R failed");
         let epsilon = F::rand(rng);
         let w = prover.compute_w(epsilon);
         let number_of_w_coeffs: usize = w.coeffs.len();
-        let (com_w, r_w) = prover.commit(&w, rng, number_of_w_coeffs).expect("Commitment to w failed");
+        let (com_w, r_w) = prover.commit(&w, rng, number_of_w_coeffs).expect("Commitment to W failed");
 
         let nodes = generate_nodes_from(&vectors);
         let root = VerkleNode::new(total, NodeKind::Poly(r), Some(nodes));
@@ -116,6 +117,22 @@ fn generate_nodes_from(liabilities: &Vec<u64>) -> Vec<VerkleNode> {
     nodes
 }
 
+#[cfg(test)]
+fn generate_verkle_group() -> VerkleGroup {
+    use ark_poly_commit::kzg10::KZG10;
+    use ark_std::test_rng;
+
+    const MAX_BITS: usize = 16;
+    const MAX_DEGREE: usize = 64;
+
+    let rng = &mut test_rng();
+    let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(MAX_DEGREE, false, rng).expect("Setup failed");
+
+    let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
+
+    VerkleGroup::setup(rng, pcs, liabilities.clone(), MAX_BITS, MAX_DEGREE).expect("Group setup failed")
+}
+
 #[test]
 fn test_verkle_group() {
     use ark_poly_commit::kzg10::KZG10;
@@ -135,10 +152,10 @@ fn test_verkle_group() {
     assert_eq!(group.root.value, 80);
 
     match group.root.kind {
-        NodeKind::Balance => {}
+        NodeKind::Balance => { assert!(false) }
         NodeKind::Poly(p) => {
             let len = liabilities.len().checked_next_power_of_two().unwrap();
-            let omega = F::get_root_of_unity(len as u64).expect("");
+            let omega = F::get_root_of_unity(len as u64).unwrap();
             for idx in 0..len - 1 {
                 let point = omega.pow(&[idx as u64]);
                 let target = F::from(liabilities[idx]);
@@ -147,4 +164,54 @@ fn test_verkle_group() {
             }
         }
     };
+}
+
+#[test]
+fn test_verkle_root() {
+    use ark_poly_commit::kzg10::KZG10;
+    use ark_poly::Polynomial;
+    use ark_std::test_rng;
+    use ark_ff::{FftField, Field};
+
+    const MAX_BITS: usize = 16;
+    const MAX_DEGREE: usize = 64;
+
+    let rng = &mut test_rng();
+    let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(MAX_DEGREE, false, rng).expect("Setup failed");
+
+    let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
+
+    let group_1 = generate_verkle_group();
+    let group_2 = generate_verkle_group();
+    let groups = [group_1, group_2].to_vec();
+    let verkle_root = VerkleRoot::setup(rng, pcs, liabilities.clone(), groups.clone(), MAX_BITS, MAX_DEGREE).expect("Root setup failed");
+    assert_eq!(verkle_root.root.value, 240);
+
+    match verkle_root.root.kind {
+        NodeKind::Balance => { assert!(false) }
+        NodeKind::Poly(r) => {
+            let len = (liabilities.len() + groups.len() * 2).checked_next_power_of_two().unwrap();
+            let omega = F::get_root_of_unity(len as u64).unwrap();
+            for idx in 1..liabilities.len() - 1 {
+                let point = omega.pow(&[idx as u64]);
+                let target = F::from(liabilities[idx]);
+                let eval = r.evaluate(&point);
+                assert_eq!(eval, target);
+            }
+
+            let mut j = 0;
+            for idx in (liabilities.len()..liabilities.len() + groups.len() * 2 - 1).step_by(2) {
+                let group = &groups[j];
+                let point_com = omega.pow(&[idx as u64]);
+                let point_value = omega.pow(&[(idx + 1) as u64]);
+                let com_p = group.com_p;
+                let hash_value_of_com_p = calculate_hash(&com_p);
+                let eval_hash = r.evaluate(&point_com);
+                let eval_value = r.evaluate(&point_value);
+                assert_eq!(F::from(hash_value_of_com_p), eval_hash);
+                assert_eq!(F::from(group.root.value), eval_value);
+                j += 1;
+            }
+        }
+    }
 }

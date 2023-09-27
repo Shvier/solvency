@@ -49,8 +49,9 @@ impl Prover<'_> {
 
     pub fn commit(
         &self, 
+        poly: &DensePolynomial<F>,
     ) -> Result<(Commitment<Bls12_381>, Randomness<F, DensePolynomial<F>>), Error> {
-        let (com, r) = KZG10::<Bls12_381, UniPoly_381>::commit(&self.powers, &self.p, None, None).expect("Commitment failed");
+        let (com, r) = KZG10::<Bls12_381, UniPoly_381>::commit(&self.powers, &poly, None, None).expect("Commitment failed");
         Ok((com, r))
     }
 
@@ -127,7 +128,7 @@ fn test_proof() {
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
     let domain = D::new(liabilities.len()).expect("Unsupported domain length");
     let prover = Prover::setup(domain, pcs, &liabilities, MAX_BITS, MAX_DEGREE).unwrap();
-    let (com, r) = prover.commit().expect("Commitment failed");
+    let (com, r) = prover.commit(&prover.p.clone()).expect("Commitment failed");
     let point = F::from(2);
     let value = prover.p.evaluate(&point);
     let (proof, vk) = prover.compute_proof(point, r).expect("Computing proof failed");

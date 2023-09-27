@@ -119,7 +119,9 @@ fn generate_nodes_from(liabilities: &Vec<u64>) -> Vec<VerkleNode> {
 #[test]
 fn test_verkle_group() {
     use ark_poly_commit::kzg10::KZG10;
+    use ark_poly::Polynomial;
     use ark_std::test_rng;
+    use ark_ff::{FftField, Field};
 
     const MAX_BITS: usize = 16;
     const MAX_DEGREE: usize = 64;
@@ -129,6 +131,20 @@ fn test_verkle_group() {
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
 
-    let group = VerkleGroup::setup(rng, pcs, liabilities, MAX_BITS, MAX_DEGREE).expect("Group setup failed");
+    let group = VerkleGroup::setup(rng, pcs, liabilities.clone(), MAX_BITS, MAX_DEGREE).expect("Group setup failed");
     assert_eq!(group.root.value, 80);
+
+    match group.root.kind {
+        NodeKind::Balance => {}
+        NodeKind::Poly(p) => {
+            let len = liabilities.len().checked_next_power_of_two().unwrap();
+            let omega = F::get_root_of_unity(len as u64).expect("");
+            for idx in 0..len - 1 {
+                let point = omega.pow(&[idx as u64]);
+                let target = F::from(liabilities[idx]);
+                let eval = p.evaluate(&point);
+                assert_eq!(eval, target);
+            }
+        }
+    };
 }

@@ -4,13 +4,13 @@ use std::hash::{Hash, Hasher};
 use ark_ec::{bls12::Bls12, pairing::Pairing};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain, univariate::DensePolynomial};
 use ark_bls12_381::{Fr as F, Config, Bls12_381};
-use ark_std::{rand::Rng, UniformRand, borrow::Cow};
+use ark_std::{rand::Rng, UniformRand};
+use ark_poly_commit::kzg10::{Commitment, Randomness, UniversalParams};
 
 use crate::error::Error;
 use crate::prover::data_structures::Prover;
 
 pub mod tree;
-use ark_poly_commit::kzg10::{KZG10, Powers, Commitment, Randomness};
 use tree::*;
 
 type D = Radix2EvaluationDomain::<F>;
@@ -30,11 +30,11 @@ impl VerkleGroup {
     /// initialize the bottom nodes
     pub fn setup<R: Rng>(
         rng: &mut R,
+        pcs: UniversalParams<Bls12_381>,
         liabilities: Vec<u64>,
         max_bits: usize, 
         max_degree: usize
     ) -> Result<Self, Error> {
-        let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
         let vectors = liabilities.clone();
         let domain = D::new(vectors.len()).expect("Unsupported domain length");
 
@@ -44,10 +44,10 @@ impl VerkleGroup {
         let epsilon = F::rand(rng);
         let w = prover.compute_w(epsilon);
         let (com_w, r_w) = prover.commit(&w).expect("Commitment to w failed");
-        let hash_com_p = calculate_hash(&com_p);
 
-        let non_leaf_nodes = generate_nodes_from(&vectors);
-        let root = VerkleNode::new(hash_com_p, NodeKind::Poly(p), Some(non_leaf_nodes));
+        let nodes = generate_nodes_from(&vectors);
+
+        let root = VerkleNode::new(vectors[0], NodeKind::Poly(p), Some(nodes));
         Ok(Self { root: root, com_p: com_p, rand_p: r_p, com_w: com_w, rand_w: r_w })
     }
 }
@@ -64,12 +64,35 @@ pub struct VerkleRoot {
 impl VerkleRoot {
     pub fn setup<R: Rng>(
         rng: &mut R,
+        pcs: UniversalParams<Bls12_381>,
         liabilities: Vec<u64>,
         groups: Vec<VerkleGroup>,
         max_bits: usize, 
         max_degree: usize,
-    ) {
+    ) -> Result<Self, Error> {
+        let mut vectors = liabilities.clone();
+        let mut total = liabilities[0];
+        for group in &groups {
+            let hash_value_com = calculate_hash(&group.com_p);
+            vectors.push(hash_value_com);
+            let liability = group.root.value;
+            vectors.push(liability);
+            total += liability;
+        }
+        vectors[0] = total;
 
+        let domain = D::new(vectors.len()).expect("Unsupported domain length");
+
+        let prover = Prover::setup(domain, pcs, &vectors, max_bits, max_degree).unwrap();
+        let r = prover.p.clone();
+        let (com_r, r_r) = prover.commit(&r).expect("Commitment to r failed");
+        let epsilon = F::rand(rng);
+        let w = prover.compute_w(epsilon);
+        let (com_w, r_w) = prover.commit(&w).expect("Commitment to w failed");
+
+        let nodes = generate_nodes_from(&vectors);
+        let root = VerkleNode::new(total, NodeKind::Poly(r), Some(nodes));
+        Ok(Self { root: root, groups: groups, com_r: com_r, rand_r: r_r, com_w: com_w, rand_w: r_w })
     }
 }
 

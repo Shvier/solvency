@@ -6,14 +6,29 @@ pub enum NodeKind {
     Balance,
 }
 
-pub struct Node {
-    pub value: u64,
-    pub kind: NodeKind,
-    pub children: Option<Vec<Node>>,
+impl Clone for NodeKind {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Poly(arg0) => Self::Poly(arg0.clone()),
+            Self::Balance => Self::Balance,
+        }
+    }
 }
 
-impl Node {
-    pub fn new(value: u64, kind: NodeKind, children: Option<Vec<Node>>) -> Node {
-        Node { value: value, kind: kind, children: children }
+pub struct VerkleNode {
+    pub value: u64,
+    pub kind: NodeKind,
+    pub children: Option<Vec<VerkleNode>>,
+}
+
+impl VerkleNode {
+    pub fn new(value: u64, kind: NodeKind, children: Option<Vec<VerkleNode>>) -> VerkleNode {
+        VerkleNode { value: value, kind: kind, children: children }
+    }
+}
+
+impl Clone for VerkleNode {
+    fn clone(&self) -> Self {
+        Self { value: self.value.clone(), kind: self.kind.clone(), children: self.children.clone() }
     }
 }

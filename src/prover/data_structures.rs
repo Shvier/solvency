@@ -34,5 +34,5 @@ pub fn generate_prover() -> Prover<'static> {
 
     let rng = &mut test_rng();
     let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(MAX_DEGREE, false, rng).expect("Setup failed");
-    Prover::setup(domain, pcs, liabilities, MAX_BITS, MAX_DEGREE).unwrap()
+    Prover::setup(domain, pcs, &liabilities, MAX_BITS, MAX_DEGREE).unwrap()
 }

@@ -35,19 +35,19 @@ impl VerkleGroup {
         max_bits: usize, 
         max_degree: usize
     ) -> Result<Self, Error> {
-        let vectors = liabilities.clone();
-        let domain = D::new(vectors.len()).expect("Unsupported domain length");
+        let domain = D::new(liabilities.len()).expect("Unsupported domain length");
 
-        let prover = Prover::setup(domain, pcs, &vectors, max_bits, max_degree).unwrap();
+        let prover = Prover::setup(domain, pcs, &liabilities, max_bits, max_degree).unwrap();
         let p = prover.p.clone();
-        let (com_p, r_p) = prover.commit(&p).expect("Commitment to p failed");
+        let (com_p, r_p) = prover.commit(&p, rng, max_degree).expect("Commitment to p failed");
         let epsilon = F::rand(rng);
         let w = prover.compute_w(epsilon);
-        let (com_w, r_w) = prover.commit(&w).expect("Commitment to w failed");
+        let number_of_w_coeffs: usize = w.coeffs.len();
+        let (com_w, r_w) = prover.commit(&w, rng, number_of_w_coeffs).expect("Commitment to w failed");
 
-        let nodes = generate_nodes_from(&vectors);
+        let nodes = generate_nodes_from(&liabilities);
 
-        let root = VerkleNode::new(vectors[0], NodeKind::Poly(p), Some(nodes));
+        let root = VerkleNode::new(liabilities[0], NodeKind::Poly(p), Some(nodes));
         Ok(Self { root: root, com_p: com_p, rand_p: r_p, com_w: com_w, rand_w: r_w })
     }
 }
@@ -85,10 +85,11 @@ impl VerkleRoot {
 
         let prover = Prover::setup(domain, pcs, &vectors, max_bits, max_degree).unwrap();
         let r = prover.p.clone();
-        let (com_r, r_r) = prover.commit(&r).expect("Commitment to r failed");
+        let (com_r, r_r) = prover.commit(&r, rng, max_degree).expect("Commitment to r failed");
         let epsilon = F::rand(rng);
         let w = prover.compute_w(epsilon);
-        let (com_w, r_w) = prover.commit(&w).expect("Commitment to w failed");
+        let number_of_w_coeffs: usize = w.coeffs.len();
+        let (com_w, r_w) = prover.commit(&w, rng, number_of_w_coeffs).expect("Commitment to w failed");
 
         let nodes = generate_nodes_from(&vectors);
         let root = VerkleNode::new(total, NodeKind::Poly(r), Some(nodes));
@@ -113,4 +114,21 @@ fn generate_nodes_from(liabilities: &Vec<u64>) -> Vec<VerkleNode> {
     } })
     .collect();
     nodes
+}
+
+#[test]
+fn test_verkle_group() {
+    use ark_poly_commit::kzg10::KZG10;
+    use ark_std::test_rng;
+
+    const MAX_BITS: usize = 16;
+    const MAX_DEGREE: usize = 64;
+
+    let rng = &mut test_rng();
+    let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(MAX_DEGREE, false, rng).expect("Setup failed");
+
+    let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
+
+    let group = VerkleGroup::setup(rng, pcs, liabilities, MAX_BITS, MAX_DEGREE).expect("Group setup failed");
+    assert_eq!(group.root.value, 80);
 }

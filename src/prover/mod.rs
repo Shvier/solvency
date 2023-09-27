@@ -5,7 +5,7 @@ use ark_poly_commit::kzg10::{KZG10, Commitment, Randomness, UniversalParams, Pow
 use ark_std::borrow::Cow;
 use ark_bls12_381::Bls12_381;
 use ark_bls12_381::Fr as F;
-use ark_std::{fmt, vec::Vec, start_timer, end_timer};
+use ark_std::{fmt, vec::Vec, start_timer, end_timer, rand::Rng, UniformRand};
 use ark_poly::univariate::DensePolynomial;
 use ark_ff::{PrimeField};
 
@@ -24,7 +24,7 @@ type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
 
 type D = Radix2EvaluationDomain::<F>;
 
-impl Prover<'_> {
+impl Prover {
     pub fn setup(
         domain: D,
         pcs: UniversalParams<Bls12_381>,
@@ -37,31 +37,51 @@ impl Prover<'_> {
         let powers_of_gamma_g = (0..=max_degree)
             .map(|i| pcs.powers_of_gamma_g[&i])
             .collect();
-        let powers = Powers {
+        let powers: Powers<Bls12_381> = Powers {
             powers_of_g: Cow::Owned(powers_of_g),
             powers_of_gamma_g: Cow::Owned(powers_of_gamma_g),
         };
         let aux_vec = compute_aux_vector(&liabilities, max_bits);
         let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
         let i = interpolate_poly(&aux_vec, domain);
-        Ok(Self { domain, pcs, max_bits, max_degree, p, i, powers, liabilities: liabilities.to_vec(), aux_vec })
+        Ok(Self { domain, max_bits, p, i, liabilities: liabilities.to_vec(), aux_vec })
     }
 
-    pub fn commit(
+    pub fn commit<R: Rng>(
         &self, 
         poly: &DensePolynomial<F>,
+        rng: &mut R,
+        max_degree: usize,
     ) -> Result<(Commitment<Bls12_381>, Randomness<F, DensePolynomial<F>>), Error> {
-        let (com, r) = KZG10::<Bls12_381, UniPoly_381>::commit(&self.powers, &poly, None, None).expect("Commitment failed");
+        let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
+        let powers_of_g = pcs.powers_of_g[..=max_degree].to_vec();
+        let powers_of_gamma_g = (0..=max_degree)
+            .map(|i| pcs.powers_of_gamma_g[&i])
+            .collect();
+        let powers = Powers {
+            powers_of_g: Cow::Owned(powers_of_g),
+            powers_of_gamma_g: Cow::Owned(powers_of_gamma_g),
+        };
+        let (com, r) = KZG10::<Bls12_381, UniPoly_381>::commit(&powers, &poly, None, None).expect("Commitment failed");
         Ok((com, r))
     }
 
-    pub fn compute_proof(
+    pub fn compute_proof<R: Rng>(
         &self, 
         point: F,
         r: Randomness<F, DensePolynomial<F>>,
+        rng: &mut R,
+        max_degree: usize,
     ) -> Result<(Proof<Bls12_381>, VerifierKey<Bls12_381>), Error> {
-        let params = &self.pcs;
-        let powers = &self.powers;
+        let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
+        let powers_of_g = pcs.powers_of_g[..=max_degree].to_vec();
+        let powers_of_gamma_g = (0..=max_degree)
+            .map(|i| pcs.powers_of_gamma_g[&i])
+            .collect();
+        let powers: Powers<Bls12_381> = Powers {
+            powers_of_g: Cow::Owned(powers_of_g),
+            powers_of_gamma_g: Cow::Owned(powers_of_gamma_g),
+        };
         let (witness, _): (UniPoly_381, Option<UniPoly_381>) = KZG10::<Bls12_381, UniPoly_381>::compute_witness_polynomial(&self.p, point, &r).unwrap();
         let (num_leading_zeros, witness_coeffs) = skip_leading_zeros_and_convert_to_bigints(&witness);
         let witness_comm_time = start_timer!(|| "Computing commitment to witness polynomial");
@@ -71,12 +91,12 @@ impl Prover<'_> {
         );
         end_timer!(witness_comm_time);
         let vk = VerifierKey::<Bls12_381> {
-            g: params.powers_of_g[0],
-            gamma_g: params.powers_of_gamma_g[&0],
-            h: params.h,
-            beta_h: params.beta_h,
-            prepared_h: params.prepared_h.clone(),
-            prepared_beta_h: params.prepared_beta_h.clone(),
+            g: pcs.powers_of_g[0],
+            gamma_g: pcs.powers_of_gamma_g[&0],
+            h: pcs.h,
+            beta_h: pcs.beta_h,
+            prepared_h: pcs.prepared_h.clone(),
+            prepared_beta_h: pcs.prepared_beta_h.clone(),
         };
     
         let proof = Proof {
@@ -87,7 +107,7 @@ impl Prover<'_> {
     }    
 }
 
-impl fmt::Debug for Prover<'_> {
+impl fmt::Debug for Prover {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("Prover")
             .finish()
@@ -128,10 +148,10 @@ fn test_proof() {
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
     let domain = D::new(liabilities.len()).expect("Unsupported domain length");
     let prover = Prover::setup(domain, pcs, &liabilities, MAX_BITS, MAX_DEGREE).unwrap();
-    let (com, r) = prover.commit(&prover.p.clone()).expect("Commitment failed");
+    let (com, r) = prover.commit(&prover.p.clone(), rng, MAX_DEGREE).expect("Commitment failed");
     let point = F::from(2);
     let value = prover.p.evaluate(&point);
-    let (proof, vk) = prover.compute_proof(point, r).expect("Computing proof failed");
+    let (proof, vk) = prover.compute_proof(point, r, rng, MAX_DEGREE).expect("Computing proof failed");
     let result = KZG10::<Bls12_381, UniPoly_381>::check(&vk, &com, point, value, &proof).expect("Checking proof failed");
     assert!(result);
 }

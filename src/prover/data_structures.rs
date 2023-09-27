@@ -4,20 +4,17 @@ use ark_bls12_381::Bls12_381;
 use ark_bls12_381::Fr as F;
 use ark_poly::univariate::DensePolynomial;
 
-pub struct Prover<'a> {
+pub struct Prover {
     pub domain: Radix2EvaluationDomain::<F>,
-    pub pcs: UniversalParams<Bls12_381>,
     pub max_bits: usize,
-    pub max_degree: usize,
     pub p: DensePolynomial<F>,
     pub i: DensePolynomial<F>,
-    pub powers: Powers<'a, Bls12_381>,
     pub liabilities: Vec<u64>,
     pub aux_vec: Vec<u64>,
 }
 
 #[cfg(test)]
-pub fn generate_prover() -> Prover<'static> {
+pub fn generate_prover() -> Prover {
     use ark_std::test_rng;
     use ark_poly_commit::kzg10::KZG10;
     use ark_ec::pairing::Pairing;

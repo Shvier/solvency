@@ -4,7 +4,7 @@ use ark_ff::{Field, FftField};
 use ark_bls12_381::Fr as F;
 use ark_poly::{EvaluationDomain, univariate::DensePolynomial, Polynomial, Evaluations, Radix2EvaluationDomain, DenseUVPolynomial};
 
-impl Prover<'_> {
+impl Prover {
     pub fn compute_w1(&self) -> DensePolynomial<F> {
         let max_bits = self.max_bits;
         let i = &self.i;
@@ -92,7 +92,7 @@ impl Prover<'_> {
     }
 }
 
-impl Prover<'_> {
+impl Prover {
     #[inline]
     fn add_assign(p: &DensePolynomial<F>, element: F, negative: bool) -> DensePolynomial<F> {
         let mut new_p = p.clone();

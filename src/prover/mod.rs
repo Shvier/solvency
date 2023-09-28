@@ -41,8 +41,8 @@ impl Prover {
         &self, 
         poly: &DensePolynomial<F>,
         rng: &mut R,
-        max_degree: usize,
     ) -> Result<(Commitment<Bls12_381>, Randomness<F, DensePolynomial<F>>), Error> {
+        let max_degree = poly.coeffs.len().checked_next_power_of_two().expect("Unsupported degree");
         let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
         let powers_of_g = pcs.powers_of_g[..=max_degree].to_vec();
         let powers_of_gamma_g = (0..=max_degree)
@@ -137,7 +137,7 @@ fn test_proof() {
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
     let domain = D::new(liabilities.len()).expect("Unsupported domain length");
     let prover = Prover::setup(domain, &liabilities, MAX_BITS).unwrap();
-    let (com, r) = prover.commit(&prover.p.clone(), rng, MAX_DEGREE).expect("Commitment failed");
+    let (com, r) = prover.commit(&prover.p.clone(), rng).expect("Commitment failed");
     let point = F::from(2);
     let value = prover.p.evaluate(&point);
     let (proof, vk) = prover.compute_proof(point, r, rng, MAX_DEGREE).expect("Computing proof failed");

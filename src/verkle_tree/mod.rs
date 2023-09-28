@@ -34,17 +34,15 @@ impl VerkleGroup {
         rng: &mut R,
         liabilities: Vec<u64>,
         max_bits: usize, 
-        max_degree: usize
     ) -> Result<Self, Error> {
         let domain = D::new(liabilities.len()).expect("Unsupported domain length");
 
         let prover = Prover::setup(domain, &liabilities, max_bits).unwrap();
         let p = prover.p.clone();
-        let (com_p, r_p) = prover.commit(&p, rng, max_degree).expect("Commitment to P failed");
+        let (com_p, r_p) = prover.commit(&p, rng).expect("Commitment to P failed");
         let epsilon = F::rand(rng);
         let w = prover.compute_w(epsilon);
-        let number_of_w_coeffs: usize = w.coeffs.len();
-        let (com_w, r_w) = prover.commit(&w, rng, number_of_w_coeffs).expect("Commitment to W failed");
+        let (com_w, r_w) = prover.commit(&w, rng).expect("Commitment to W failed");
 
         let nodes = generate_nodes_from(liabilities.clone(), None);
 
@@ -57,7 +55,6 @@ impl VerkleGroup {
         liabilities: Vec<u64>,
         groups: Vec<VerkleGroup>,
         max_bits: usize, 
-        max_degree: usize,
     ) -> Result<Self, Error> {
         let mut vectors = match liabilities.len() {
             0 => { [0].to_vec() }
@@ -77,11 +74,10 @@ impl VerkleGroup {
 
         let prover = Prover::setup(domain, &vectors, max_bits).unwrap();
         let r = prover.p.clone();
-        let (com_r, r_r) = prover.commit(&r, rng, max_degree).expect("Commitment to R failed");
+        let (com_r, r_r) = prover.commit(&r, rng).expect("Commitment to R failed");
         let epsilon = F::rand(rng);
         let w = prover.compute_w(epsilon);
-        let number_of_w_coeffs: usize = w.coeffs.len();
-        let (com_w, r_w) = prover.commit(&w, rng, number_of_w_coeffs).expect("Commitment to W failed");
+        let (com_w, r_w) = prover.commit(&w, rng).expect("Commitment to W failed");
 
         let nodes = generate_nodes_from(liabilities.clone(), Some(groups.clone()));
         let root = VerkleNode::new(0, total, NodeKind::Poly(r), Some(nodes));
@@ -125,13 +121,12 @@ fn generate_verkle_group() -> VerkleGroup {
     use ark_std::test_rng;
 
     const MAX_BITS: usize = 16;
-    const MAX_DEGREE: usize = 64;
 
     let rng = &mut test_rng();
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
 
-    VerkleGroup::from_terminal_nodes(rng, liabilities.clone(), MAX_BITS, MAX_DEGREE).expect("Group setup failed")
+    VerkleGroup::from_terminal_nodes(rng, liabilities.clone(), MAX_BITS).expect("Group setup failed")
 }
 
 #[test]
@@ -141,13 +136,12 @@ fn test_verkle_group_terminal_nodes() {
     use ark_ff::{FftField, Field};
 
     const MAX_BITS: usize = 16;
-    const MAX_DEGREE: usize = 64;
 
     let rng = &mut test_rng();
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
 
-    let group = VerkleGroup::from_terminal_nodes(rng, liabilities.clone(), MAX_BITS, MAX_DEGREE).expect("Group setup failed");
+    let group = VerkleGroup::from_terminal_nodes(rng, liabilities.clone(), MAX_BITS).expect("Group setup failed");
     assert_eq!(group.root.value, 80);
 
     match group.root.kind {
@@ -172,7 +166,6 @@ fn test_verkle_group_intermediate_nodes() {
     use ark_ff::{FftField, Field};
 
     const MAX_BITS: usize = 16;
-    const MAX_DEGREE: usize = 64;
 
     let rng = &mut test_rng();
 
@@ -181,10 +174,10 @@ fn test_verkle_group_intermediate_nodes() {
     let group_1 = generate_verkle_group();
     let group_2 = generate_verkle_group();
     let groups = [group_1, group_2].to_vec();
-    let verkle_root = VerkleGroup::from_intermediate_nodes(rng, [].to_vec(), groups.clone(), MAX_BITS, MAX_DEGREE).expect("Root setup failed");
+    let verkle_root = VerkleGroup::from_intermediate_nodes(rng, [].to_vec(), groups.clone(), MAX_BITS).expect("Root setup failed");
     assert_eq!(verkle_root.root.value, 160);
 
-    let verkle_root = VerkleGroup::from_intermediate_nodes(rng, liabilities.clone(), groups.clone(), MAX_BITS, MAX_DEGREE).expect("Root setup failed");
+    let verkle_root = VerkleGroup::from_intermediate_nodes(rng, liabilities.clone(), groups.clone(), MAX_BITS).expect("Root setup failed");
     assert_eq!(verkle_root.root.value, 240);
 
     match verkle_root.root.kind {

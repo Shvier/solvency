@@ -25,11 +25,12 @@ pub struct VerkleGroup {
     pub rand_p: Randomness<F, UniPoly_381>,
     pub com_w: Commitment<Bls12<Config>>,
     pub rand_w: Randomness<F, UniPoly_381>,
+    pub groups: Option<Vec<VerkleGroup>>,
 }
 
 impl VerkleGroup {
     /// initialize the bottom nodes
-    pub fn setup<R: Rng>(
+    pub fn from_terminal_nodes<R: Rng>(
         rng: &mut R,
         pcs: UniversalParams<Bls12_381>,
         liabilities: Vec<u64>,
@@ -49,21 +50,10 @@ impl VerkleGroup {
         let nodes = generate_nodes_from(&liabilities);
 
         let root = VerkleNode::new(liabilities[0], NodeKind::Poly(p), Some(nodes));
-        Ok(Self { root: root, com_p: com_p, rand_p: r_p, com_w: com_w, rand_w: r_w })
+        Ok(Self { root: root, com_p: com_p, rand_p: r_p, com_w: com_w, rand_w: r_w, groups: None })
     }
-}
 
-pub struct VerkleRoot {
-    pub root: VerkleNode,
-    pub groups: Vec<VerkleGroup>,
-    pub com_r: Commitment<Bls12<Config>>,
-    pub rand_r: Randomness<F, UniPoly_381>,
-    pub com_w: Commitment<Bls12<Config>>,
-    pub rand_w: Randomness<F, UniPoly_381>,
-}
-
-impl VerkleRoot {
-    pub fn setup<R: Rng>(
+    pub fn from_intermediate_nodes<R: Rng>(
         rng: &mut R,
         pcs: UniversalParams<Bls12_381>,
         liabilities: Vec<u64>,
@@ -97,7 +87,7 @@ impl VerkleRoot {
 
         let nodes = generate_nodes_from(&vectors);
         let root = VerkleNode::new(total, NodeKind::Poly(r), Some(nodes));
-        Ok(Self { root: root, groups: groups, com_r: com_r, rand_r: r_r, com_w: com_w, rand_w: r_w })
+        Ok(Self { root: root, com_p: com_r, rand_p: r_r, com_w: com_w, rand_w: r_w, groups: Some(groups) })
     }
 }
 
@@ -133,11 +123,11 @@ fn generate_verkle_group() -> VerkleGroup {
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
 
-    VerkleGroup::setup(rng, pcs, liabilities.clone(), MAX_BITS, MAX_DEGREE).expect("Group setup failed")
+    VerkleGroup::from_terminal_nodes(rng, pcs, liabilities.clone(), MAX_BITS, MAX_DEGREE).expect("Group setup failed")
 }
 
 #[test]
-fn test_verkle_group() {
+fn test_verkle_group_terminal_nodes() {
     use ark_poly_commit::kzg10::KZG10;
     use ark_poly::Polynomial;
     use ark_std::test_rng;
@@ -151,7 +141,7 @@ fn test_verkle_group() {
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
 
-    let group = VerkleGroup::setup(rng, pcs, liabilities.clone(), MAX_BITS, MAX_DEGREE).expect("Group setup failed");
+    let group = VerkleGroup::from_terminal_nodes(rng, pcs, liabilities.clone(), MAX_BITS, MAX_DEGREE).expect("Group setup failed");
     assert_eq!(group.root.value, 80);
 
     match group.root.kind {
@@ -170,7 +160,7 @@ fn test_verkle_group() {
 }
 
 #[test]
-fn test_verkle_root() {
+fn test_verkle_group_intermediate_nodes() {
     use ark_poly_commit::kzg10::KZG10;
     use ark_poly::Polynomial;
     use ark_std::test_rng;
@@ -187,10 +177,10 @@ fn test_verkle_root() {
     let group_1 = generate_verkle_group();
     let group_2 = generate_verkle_group();
     let groups = [group_1, group_2].to_vec();
-    let verkle_root = VerkleRoot::setup(rng, pcs.clone(), [].to_vec(), groups.clone(), MAX_BITS, MAX_DEGREE).expect("Root setup failed");
+    let verkle_root = VerkleGroup::from_intermediate_nodes(rng, pcs.clone(), [].to_vec(), groups.clone(), MAX_BITS, MAX_DEGREE).expect("Root setup failed");
     assert_eq!(verkle_root.root.value, 160);
 
-    let verkle_root = VerkleRoot::setup(rng, pcs, liabilities.clone(), groups.clone(), MAX_BITS, MAX_DEGREE).expect("Root setup failed");
+    let verkle_root = VerkleGroup::from_intermediate_nodes(rng, pcs, liabilities.clone(), groups.clone(), MAX_BITS, MAX_DEGREE).expect("Root setup failed");
     assert_eq!(verkle_root.root.value, 240);
 
     match verkle_root.root.kind {

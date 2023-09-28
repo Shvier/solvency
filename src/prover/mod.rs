@@ -27,20 +27,10 @@ type D = Radix2EvaluationDomain::<F>;
 impl Prover {
     pub fn setup(
         domain: D,
-        pcs: UniversalParams<Bls12_381>,
         liabilities: &Vec<u64>,
         max_bits: usize,
-        max_degree: usize,
     ) -> Result<Self, Error> {
         let p = interpolate_poly(&liabilities, domain);
-        let powers_of_g = pcs.powers_of_g[..=max_degree].to_vec();
-        let powers_of_gamma_g = (0..=max_degree)
-            .map(|i| pcs.powers_of_gamma_g[&i])
-            .collect();
-        let powers: Powers<Bls12_381> = Powers {
-            powers_of_g: Cow::Owned(powers_of_g),
-            powers_of_gamma_g: Cow::Owned(powers_of_gamma_g),
-        };
         let aux_vec = compute_aux_vector(&liabilities, max_bits);
         let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
         let i = interpolate_poly(&aux_vec, domain);
@@ -147,7 +137,7 @@ fn test_proof() {
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
     let domain = D::new(liabilities.len()).expect("Unsupported domain length");
-    let prover = Prover::setup(domain, pcs, &liabilities, MAX_BITS, MAX_DEGREE).unwrap();
+    let prover = Prover::setup(domain, &liabilities, MAX_BITS).unwrap();
     let (com, r) = prover.commit(&prover.p.clone(), rng, MAX_DEGREE).expect("Commitment failed");
     let point = F::from(2);
     let value = prover.p.evaluate(&point);

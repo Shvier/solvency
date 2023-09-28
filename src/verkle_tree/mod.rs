@@ -39,7 +39,7 @@ impl VerkleGroup {
     ) -> Result<Self, Error> {
         let domain = D::new(liabilities.len()).expect("Unsupported domain length");
 
-        let prover = Prover::setup(domain, pcs, &liabilities, max_bits, max_degree).unwrap();
+        let prover = Prover::setup(domain, &liabilities, max_bits).unwrap();
         let p = prover.p.clone();
         let (com_p, r_p) = prover.commit(&p, rng, max_degree).expect("Commitment to P failed");
         let epsilon = F::rand(rng);
@@ -77,7 +77,7 @@ impl VerkleGroup {
 
         let domain = D::new(vectors.len()).expect("Unsupported domain length");
 
-        let prover = Prover::setup(domain, pcs, &vectors, max_bits, max_degree).unwrap();
+        let prover = Prover::setup(domain, &vectors, max_bits).unwrap();
         let r = prover.p.clone();
         let (com_r, r_r) = prover.commit(&r, rng, max_degree).expect("Commitment to R failed");
         let epsilon = F::rand(rng);

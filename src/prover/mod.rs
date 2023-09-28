@@ -26,15 +26,15 @@ type D = Radix2EvaluationDomain::<F>;
 
 impl Prover {
     pub fn setup(
-        domain: D,
         liabilities: &Vec<u64>,
         max_bits: usize,
     ) -> Result<Self, Error> {
+        let domain = D::new(liabilities.len()).expect("Unsupported domain length");
         let p = interpolate_poly(&liabilities, domain);
         let aux_vec = compute_aux_vector(&liabilities, max_bits);
         let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
         let i = interpolate_poly(&aux_vec, domain);
-        Ok(Self { domain, max_bits, p, i, liabilities: liabilities.to_vec(), aux_vec })
+        Ok(Self { max_bits, p, i, liabilities: liabilities.to_vec(), aux_vec })
     }
 
     pub fn commit<R: Rng>(
@@ -136,7 +136,7 @@ fn test_proof() {
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
     let domain = D::new(liabilities.len()).expect("Unsupported domain length");
-    let prover = Prover::setup(domain, &liabilities, MAX_BITS).unwrap();
+    let prover = Prover::setup(&liabilities, MAX_BITS).unwrap();
     let (com, r) = prover.commit(&prover.p.clone(), rng).expect("Commitment failed");
     let point = F::from(2);
     let value = prover.p.evaluate(&point);

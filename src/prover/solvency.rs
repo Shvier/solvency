@@ -19,11 +19,10 @@ impl Prover {
         &(&i_scaled_1 - &i_scaled_sf) - &i_scaled_sf_1
     }
 
-    pub fn compute_w2(&self) -> DensePolynomial<F> {
+    pub fn compute_w2(&self, domain: D) -> DensePolynomial<F> {
         let scale_factor = self.max_bits + 1;
         let i = &self.i;
-        let omega = F::get_root_of_unity(self.domain.size).expect("Unsupported domain size");
-        let domain = self.domain;
+        let omega = F::get_root_of_unity(domain.size).expect("Unsupported domain size");
         let aux_vec = &self.aux_vec;
 
         // i(x + 1)
@@ -78,13 +77,13 @@ impl Prover {
         &i_scaled - &p_even
     }    
 
-    pub fn compute_w(&self, challenge: F) -> DensePolynomial<F> {
+    pub fn compute_w(&self, domain: D, challenge: F) -> DensePolynomial<F> {
         let i = &self.i;
         let last_point = (self.aux_vec.len() - 1) as u64;
-        let omega = F::get_root_of_unity(self.domain.size).expect("Unsupported domain size");
+        let omega = F::get_root_of_unity(domain.size).expect("Unsupported domain size");
         let eval = i.evaluate(&(omega.pow(&[last_point])));
         let w1 = self.compute_w1();
-        let w2 = self.compute_w2();
+        let w2 = self.compute_w2(domain);
         let w3 = self.compute_w3();
         let w = &w1 + &(&w2 * challenge) + (&w3 * challenge.pow(&[2]));
         let w = Prover::add_assign(&w, eval * challenge.pow(&[3]), false);
@@ -133,7 +132,7 @@ fn test_compute_w2() {
     let aux_vec = compute_aux_vector(&liabilities, 15);
     let domain = D::new(liabilities.len()).expect("Unsupported domain length");
     let prover = generate_prover();
-    let w2 = prover.compute_w2();
+    let w2 = prover.compute_w2(domain);
     let root_of_unity = F::get_root_of_unity(domain.size).unwrap();
     for idx in 0..aux_vec.len() {
         let point = root_of_unity.pow(&[idx as u64]);
@@ -172,7 +171,7 @@ fn test_compute_w() {
     let aux_vec = compute_aux_vector(&liabilities, 15);
     let domain = D::new(liabilities.len()).expect("Unsupported domain length");
     let prover = generate_prover();
-    let w = prover.compute_w(challenge);
+    let w = prover.compute_w(domain, challenge);
     let root_of_unity = F::get_root_of_unity(domain.size).unwrap();
     for idx in 0..aux_vec.len() {
         let point = root_of_unity.pow(&[idx as u64]);

@@ -9,13 +9,19 @@ pub enum NodeKind {
 
 #[derive(Clone)]
 pub struct VerkleNode {
+    pub id: usize,
     pub value: u64,
     pub kind: NodeKind,
     pub children: Option<Vec<VerkleNode>>,
 }
 
 impl VerkleNode {
-    pub fn new(value: u64, kind: NodeKind, children: Option<Vec<VerkleNode>>) -> VerkleNode {
-        VerkleNode { value: value, kind: kind, children: children }
+    pub fn new(
+        id: usize,
+        value: u64, 
+        kind: NodeKind, 
+        children: Option<Vec<VerkleNode>>
+    ) -> VerkleNode {
+        VerkleNode { id: id, value: value, kind: kind, children: children }
     }
 }

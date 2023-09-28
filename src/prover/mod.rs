@@ -133,7 +133,6 @@ fn test_proof() {
     const MAX_DEGREE: usize = 64;
 
     let rng = &mut test_rng();
-    let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(MAX_DEGREE, false, rng).expect("Setup failed");
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
     let domain = D::new(liabilities.len()).expect("Unsupported domain length");

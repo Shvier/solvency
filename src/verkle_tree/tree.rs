@@ -3,11 +3,16 @@ use ark_poly::univariate::DensePolynomial;
 use ark_bls12_381::{Fr as F, Config, Bls12_381};
 use ark_poly_commit::kzg10::{Commitment, Randomness};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum NodeKind {
-    Poly(DensePolynomial<F>, (Commitment<Bls12<Config>>, Randomness<F, DensePolynomial<<Bls12_381 as Pairing>::ScalarField>>), DensePolynomial<F>),
+    Poly(
+        DensePolynomial<F>, 
+        (Commitment<Bls12<Config>>, Randomness<F, DensePolynomial<<Bls12_381 as Pairing>::ScalarField>>), 
+        DensePolynomial<F>
+    ),
     Balance,
-    Id(u64), // user id or hash of commitment
+    UserId(u64), // user id
+    ComHash(u64), // hash of commitment
 }
 
 #[derive(Clone)]

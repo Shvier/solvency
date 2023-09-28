@@ -1,7 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher, self};
-use std::process::id;
-use std::vec;
+use std::hash::{Hash, Hasher};
 
 use ark_ec::{bls12::Bls12, pairing::Pairing};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain, univariate::DensePolynomial};
@@ -51,7 +49,7 @@ impl VerkleNode {
                             vectors.push(node.value);
                             total += node.value;
                         }
-                        NodeKind::Id(id) => {
+                        NodeKind::UserId(id) | NodeKind::ComHash(id) => {
                                 vectors.push(id);
                         }
                     }
@@ -98,7 +96,7 @@ fn generate_nodes_from(liabilities: Vec<u64>, children: Option<Vec<VerkleNode>>)
         .map(|(idx, l)| { VerkleNode { 
             idx: idx,
             value: 0, 
-            kind: NodeKind::Id(*l), 
+            kind: NodeKind::UserId(*l), 
             children: None 
         } })
         .collect();
@@ -110,14 +108,14 @@ fn generate_nodes_from(liabilities: Vec<u64>, children: Option<Vec<VerkleNode>>)
             for child in children {
                 let mut node = child.clone();
                 match child.kind {
-                    NodeKind::Balance | NodeKind::Id(_) => {}
+                    NodeKind::Balance | NodeKind::UserId(_) | NodeKind::ComHash(_) => {}
                     NodeKind::Poly(_, com_p, _) => {
                         // insert the node that contains the hash value of the commitment
                         let hash_value = calculate_hash(&com_p);
                         let node = VerkleNode {
                             idx: idx,
                             value: 0,
-                            kind: NodeKind::Id(hash_value),
+                            kind: NodeKind::ComHash(hash_value),
                             children: None,
                         };
                         nodes.push(node);
@@ -162,7 +160,7 @@ fn test_verkle_node_from_terminal_nodes() {
     assert_eq!(root.value, 80);
 
     match root.kind {
-        NodeKind::Balance | NodeKind::Id(_) => { assert!(false) }
+        NodeKind::Balance | NodeKind::UserId(_) | NodeKind::ComHash(_) => { assert!(false) }
         NodeKind::Poly(p, _, _) => {
             let len = liabilities.len().checked_next_power_of_two().unwrap();
             let omega = F::get_root_of_unity(len as u64).unwrap();
@@ -198,7 +196,7 @@ fn test_verkle_group_intermediate_nodes() {
     assert_eq!(root.value, 240);
 
     match root.kind {
-        NodeKind::Balance | NodeKind::Id(_) => { assert!(false) }
+        NodeKind::Balance | NodeKind::UserId(_) | NodeKind::ComHash(_) => { assert!(false) }
         NodeKind::Poly(p, _, _) => {
             let len = (liabilities.len() + nodes.len() * 2).checked_next_power_of_two().unwrap();
             let omega = F::get_root_of_unity(len as u64).unwrap();
@@ -213,7 +211,7 @@ fn test_verkle_group_intermediate_nodes() {
             for idx in (liabilities.len()..liabilities.len() + nodes.len() * 2 - 1).step_by(2) {
                 let node = &nodes[j];
                 match &node.kind {
-                    NodeKind::Balance | NodeKind::Id(_) => {}
+                    NodeKind::Balance | NodeKind::UserId(_) | NodeKind::ComHash(_) => {}
                     NodeKind::Poly(_, com_p, _) => {
                         let hash_value_of_com_p = calculate_hash(&com_p);
                         let point_com = omega.pow(&[idx as u64]);

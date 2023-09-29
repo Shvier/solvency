@@ -50,8 +50,8 @@ impl VerkleNode {
                             vectors.push(node.value);
                             total += node.value;
                         }
-                        NodeKind::UserId(id) | NodeKind::ComHash(id) => {
-                                vectors.push(id);
+                        _ => {
+                                vectors.push(node.id);
                         }
                     }
                 }
@@ -63,9 +63,11 @@ impl VerkleNode {
         let p = prover.p.clone();
         let i = prover.i.clone();
         let com_p = prover.commit(&p, rng).expect("");
+        let hash_of_com_p = calculate_hash(&com_p);
 
         let nodes = generate_nodes_from(liabilities.clone(), Some(children.clone()));
         Ok(Self { 
+            id: hash_of_com_p,
             idx: 0,
             value: total,
             kind: NodeKind::Poly(p, com_p, i),
@@ -73,19 +75,19 @@ impl VerkleNode {
          })
     }
 
-    pub fn generate_auth_path(root: VerkleNode, prefix: &Vec<u64>) -> HashMap<u64, Vec<u64>> {
+    pub fn generate_auth_path(root: &VerkleNode, prefix: &Vec<u64>) -> HashMap<u64, Vec<u64>> {
         let mut path = HashMap::<u64, Vec<u64>>::new();
         match root.kind {
             NodeKind::Poly(_, _, _) => {
-                if let Some(children) = root.children {
+                if let Some(children) = &root.children {
                     for idx in 0..children.len() {
                         let child = &children[idx];
                         match &child.kind {
-                            NodeKind::Balance | NodeKind::ComHash(_) => {}
-                            NodeKind::UserId(id) => {
-                                let mut vec: Vec<u64> = match path.contains_key(id) {
+                            NodeKind::UserId | NodeKind::ComHash => {}
+                            NodeKind::Balance => {
+                                let mut vec: Vec<u64> = match path.contains_key(&child.id) {
                                     true => {
-                                        path.get(id).unwrap().to_vec()
+                                        path.get(&child.id).unwrap().to_vec()
                                     }
                                     false => {
                                         Vec::<u64>::new()
@@ -93,13 +95,13 @@ impl VerkleNode {
                                 };
                                 vec.extend(prefix);
                                 vec.push(idx as u64);
-                                path.insert(*id, vec.to_vec());
+                                path.insert(child.id, vec.to_vec());
                             }
                             NodeKind::Poly(_, _, _) => {
                                 let idx_vec = [idx as u64].to_vec();
                                 let mut new_prefix = prefix.clone();
                                 new_prefix.extend(idx_vec);
-                                let sub_path = VerkleNode::generate_auth_path(child.clone(), &new_prefix);
+                                let sub_path = VerkleNode::generate_auth_path(child, &new_prefix);
                                 path.extend(sub_path.into_iter().map(|(k, v)| (k.clone(), v.clone())));
                             }
                         }
@@ -107,7 +109,8 @@ impl VerkleNode {
                 }
                 path
             }
-            NodeKind::UserId(id) => {
+            NodeKind::UserId => {
+                let id = root.id;
                 let mut vec: Vec<u64> = match path.contains_key(&id) {
                     true => {
                         path.get(&id).unwrap().to_vec()
@@ -135,18 +138,32 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 
 fn generate_nodes_from(liabilities: Vec<u64>, children: Option<Vec<VerkleNode>>) -> Vec<VerkleNode> {
     let mut nodes = Vec::<VerkleNode>::new();
+    let vectors = liabilities.clone();
     for (idx, l) in liabilities.into_iter().enumerate() {
+        if idx == 0 {
+            let node = VerkleNode { 
+                id: vectors[idx],
+                idx: idx,
+                value: l, 
+                kind: NodeKind::Balance, 
+                children: None 
+            };
+            nodes.push(node);
+            continue;
+        }
         let node: VerkleNode = match idx % 2 { // even positions store liability
             0 => VerkleNode { 
+                    id: vectors[idx - 1],
                     idx: idx,
                     value: l, 
                     kind: NodeKind::Balance, 
                     children: None 
                 },
             _ => VerkleNode { // odd positions store id
+                    id: vectors[idx],
                     idx: idx,
                     value: 0, 
-                    kind: NodeKind::UserId(l), 
+                    kind: NodeKind::UserId, 
                     children: None 
                 }
         };
@@ -159,14 +176,15 @@ fn generate_nodes_from(liabilities: Vec<u64>, children: Option<Vec<VerkleNode>>)
             for child in children {
                 let mut node = child.clone();
                 match child.kind {
-                    NodeKind::Balance | NodeKind::UserId(_) | NodeKind::ComHash(_) => {}
+                    NodeKind::Balance | NodeKind::UserId | NodeKind::ComHash => {}
                     NodeKind::Poly(_, com_p, _) => {
                         // insert the node that contains the hash value of the commitment
                         let hash_value = calculate_hash(&com_p);
                         let node = VerkleNode {
+                            id: hash_value,
                             idx: idx,
                             value: 0,
-                            kind: NodeKind::ComHash(hash_value),
+                            kind: NodeKind::ComHash,
                             children: None,
                         };
                         nodes.push(node);
@@ -211,7 +229,7 @@ fn test_verkle_node_from_terminal_nodes() {
     assert_eq!(root.value, 80);
 
     match root.kind {
-        NodeKind::Balance | NodeKind::UserId(_) | NodeKind::ComHash(_) => { assert!(false) }
+        NodeKind::Balance | NodeKind::UserId | NodeKind::ComHash => { assert!(false) }
         NodeKind::Poly(p, _, _) => {
             let len = liabilities.len().checked_next_power_of_two().unwrap();
             let omega = F::get_root_of_unity(len as u64).unwrap();
@@ -247,7 +265,7 @@ fn test_verkle_group_intermediate_nodes() {
     assert_eq!(root.value, 240);
 
     match root.kind {
-        NodeKind::Balance | NodeKind::UserId(_) | NodeKind::ComHash(_) => { assert!(false) }
+        NodeKind::Balance | NodeKind::UserId | NodeKind::ComHash => { assert!(false) }
         NodeKind::Poly(p, _, _) => {
             let len = (liabilities.len() + nodes.len() * 2).checked_next_power_of_two().unwrap();
             let omega = F::get_root_of_unity(len as u64).unwrap();
@@ -262,7 +280,7 @@ fn test_verkle_group_intermediate_nodes() {
             for idx in (liabilities.len()..liabilities.len() + nodes.len() * 2 - 1).step_by(2) {
                 let node = &nodes[j];
                 match &node.kind {
-                    NodeKind::Balance | NodeKind::UserId(_) | NodeKind::ComHash(_) => {}
+                    NodeKind::Balance | NodeKind::UserId | NodeKind::ComHash => {}
                     NodeKind::Poly(_, com_p, _) => {
                         let hash_value_of_com_p = calculate_hash(&com_p);
                         let point_com = omega.pow(&[idx as u64]);

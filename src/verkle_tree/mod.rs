@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -70,6 +71,59 @@ impl VerkleNode {
             kind: NodeKind::Poly(p, com_p, i),
             children: Some(nodes),
          })
+    }
+
+    pub fn generate_auth_path(root: VerkleNode, prefix: &Vec<u64>) -> HashMap<u64, Vec<u64>> {
+        let mut path = HashMap::<u64, Vec<u64>>::new();
+        match root.kind {
+            NodeKind::Poly(_, _, _) => {
+                if let Some(children) = root.children {
+                    for idx in 0..children.len() {
+                        let child = &children[idx];
+                        match &child.kind {
+                            NodeKind::Balance | NodeKind::ComHash(_) => {}
+                            NodeKind::UserId(id) => {
+                                let mut vec: Vec<u64> = match path.contains_key(id) {
+                                    true => {
+                                        path.get(id).unwrap().to_vec()
+                                    }
+                                    false => {
+                                        Vec::<u64>::new()
+                                    }
+                                };
+                                vec.extend(prefix);
+                                vec.push(idx as u64);
+                                path.insert(*id, vec.to_vec());
+                            }
+                            NodeKind::Poly(_, _, _) => {
+                                let idx_vec = [idx as u64].to_vec();
+                                let mut new_prefix = prefix.clone();
+                                new_prefix.extend(idx_vec);
+                                let sub_path = VerkleNode::generate_auth_path(child.clone(), &new_prefix);
+                                path.extend(sub_path.into_iter().map(|(k, v)| (k.clone(), v.clone())));
+                            }
+                        }
+                    }
+                }
+                path
+            }
+            NodeKind::UserId(id) => {
+                let mut vec: Vec<u64> = match path.contains_key(&id) {
+                    true => {
+                        path.get(&id).unwrap().to_vec()
+                    }
+                    false => {
+                        Vec::<u64>::new()
+                    }
+                };
+                vec.push(id);
+                path.insert(id, vec.to_vec());
+                path
+            }
+            _ => { 
+                path
+            }
+        }
     }
 }
 

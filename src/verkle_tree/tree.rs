@@ -1,9 +1,11 @@
+use std::fmt;
+
 use ark_ec::{bls12::Bls12, pairing::Pairing};
 use ark_poly::univariate::DensePolynomial;
 use ark_bls12_381::{Fr as F, Config, Bls12_381};
 use ark_poly_commit::kzg10::{Commitment, Randomness};
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum NodeKind {
     Poly(
         DensePolynomial<F>, 
@@ -15,7 +17,18 @@ pub enum NodeKind {
     ComHash(u64), // hash of commitment
 }
 
-#[derive(Clone)]
+impl fmt::Display for NodeKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+       match self {
+            NodeKind::Poly(_, _, _) => write!(f, "Poly"),
+            NodeKind::Balance => write!(f, "Balance"),
+            NodeKind::UserId(_) => write!(f, "UserId"),
+            NodeKind::ComHash(_) => write!(f, "ComHash"),
+       }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct VerkleNode {
     pub idx: usize, // idx in the vector commitment
     pub value: u64, // liability

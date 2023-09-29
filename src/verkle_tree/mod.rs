@@ -80,27 +80,24 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 }
 
 fn generate_nodes_from(liabilities: Vec<u64>, children: Option<Vec<VerkleNode>>) -> Vec<VerkleNode> {
-    let balances: Vec<VerkleNode> = liabilities.iter()
-        .enumerate()
-        .filter(|&(idx, _)| idx % 2 == 1) // odd positions store liability
-        .map(|(idx, l)| { VerkleNode { 
-            idx: idx,
-            value: *l, 
-            kind: NodeKind::Balance, 
-            children: None 
-        } })
-        .collect();
-    let ids: Vec<VerkleNode> = liabilities.iter()
-        .enumerate()
-        .filter(|&(idx, _)| idx % 2 == 0) // even positions store id
-        .map(|(idx, l)| { VerkleNode { 
-            idx: idx,
-            value: 0, 
-            kind: NodeKind::UserId(*l), 
-            children: None 
-        } })
-        .collect();
-    let mut nodes: Vec<VerkleNode> = [balances, ids].concat();
+    let mut nodes = Vec::<VerkleNode>::new();
+    for (idx, l) in liabilities.into_iter().enumerate() {
+        let node: VerkleNode = match idx % 2 { // even positions store liability
+            0 => VerkleNode { 
+                    idx: idx,
+                    value: l, 
+                    kind: NodeKind::Balance, 
+                    children: None 
+                },
+            _ => VerkleNode { // odd positions store id
+                    idx: idx,
+                    value: 0, 
+                    kind: NodeKind::UserId(l), 
+                    children: None 
+                }
+        };
+        nodes.push(node);
+    }
     match children {
         None => {}
         Some(children) => {

@@ -8,6 +8,9 @@ use ark_std::test_rng;
 use ark_std::rand::Rng;
 use ark_bls12_381::Fr as F;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use solvency::common::calculate_hash;
+use solvency::verifier::Verifier;
+use solvency::verkle_tree::tree::VerkleNode;
 
 #[allow(non_camel_case_types)]
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
@@ -27,13 +30,23 @@ impl ConstraintSynthesizer<F> for ConstraintsVerification {
 
 fn main() {
     const MAX_BITS: usize = 16;
-    const MAX_DEGREE: usize = 64;
-}
 
-fn calculate_hash<T: Hash>(t: &T) -> u64 {
-    let mut s = DefaultHasher::new();
-    t.hash(&mut s);
-    s.finish()
+    let rng = &mut test_rng();
+
+    let l1 = vec![80, 1, 20, 2, 50, 3, 10];
+    let l2 = vec![60, 4, 10, 5, 30, 6, 10, 7, 10];
+    let l3 = vec![100, 8, 30, 9, 70];
+    let group1 = VerkleNode::from(rng, l1, None, MAX_BITS).expect("");
+    let group2 = VerkleNode::from(rng, l2, None, MAX_BITS).expect("");
+    let group3 = VerkleNode::from(rng, l3, None, MAX_BITS).expect("");
+
+    let groups = [[group1.clone()], [group2]].concat();
+    let intermediate = VerkleNode::from(rng, [].to_vec(), Some(groups), MAX_BITS).expect("");
+    let root = VerkleNode::from(rng, [].to_vec(), Some([[intermediate.clone()], [group3]].concat()), MAX_BITS).expect("");
+    assert_eq!(root.value, 240);
+
+    let path = VerkleNode::generate_auth_path(&root, &[].to_vec());
+    Verifier::verify(&path, 1, 20, &root);
 }
 
 fn generate_liabilities() -> Vec<u64> {

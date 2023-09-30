@@ -8,6 +8,7 @@ use ark_bls12_381::{Fr as F, Config, Bls12_381};
 use ark_std::{rand::Rng, UniformRand};
 use ark_poly_commit::kzg10::{Commitment, Randomness};
 
+use crate::common::calculate_hash;
 use crate::error::Error;
 use crate::prover::data_structures::Prover;
 
@@ -128,12 +129,6 @@ impl VerkleNode {
             }
         }
     }
-}
-
-fn calculate_hash<T: Hash>(t: &T) -> u64 {
-    let mut s = DefaultHasher::new();
-    t.hash(&mut s);
-    s.finish()
 }
 
 fn generate_nodes_from(liabilities: Vec<u64>, children: Option<Vec<VerkleNode>>) -> Vec<VerkleNode> {

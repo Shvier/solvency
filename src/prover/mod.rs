@@ -10,6 +10,7 @@ use ark_poly::univariate::DensePolynomial;
 use ark_ff::{PrimeField};
 
 use crate::Error;
+use crate::common::calculate_hash;
 
 pub mod data_structures;
 use data_structures::*;
@@ -29,6 +30,8 @@ impl Prover {
         liabilities: &Vec<u64>,
         max_bits: usize,
     ) -> Result<Self, Error> {
+        let extended = Prover::extend_liabilities(liabilities, 10);
+        println!("{:?}", extended);
         let domain = D::new(liabilities.len()).expect("Unsupported domain length");
         let p = interpolate_poly(&liabilities, domain);
         let aux_vec = compute_aux_vector(&liabilities, max_bits);
@@ -95,6 +98,21 @@ impl Prover {
         };
         Ok((proof, vk))
     }    
+
+    fn extend_liabilities(
+        liabilities: &Vec<u64>,
+        num_of_dummy_vecs: u32,
+    ) -> Vec<u64> {
+        use uuid::Uuid;
+        let mut vec = liabilities.clone();
+        for _ in 0..num_of_dummy_vecs {
+            let uid = Uuid::new_v4().as_u128();
+            let hash_uid = calculate_hash(&uid);
+            vec.push(hash_uid);
+            vec.push(0);
+        }
+        vec
+    }
 }
 
 impl fmt::Debug for Prover {

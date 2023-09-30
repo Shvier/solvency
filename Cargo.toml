@@ -14,3 +14,4 @@ ark-poly-commit = "0.4.0"
 ark-r1cs-std = "0.4.0"
 ark-relations = "0.4.0"
 ark-std = "0.4.0"
+uuid = { version = "1.4.1", features = ["v4"] }

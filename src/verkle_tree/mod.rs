@@ -6,7 +6,7 @@ use ark_ec::{bls12::Bls12, pairing::Pairing};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain, univariate::DensePolynomial};
 use ark_bls12_381::{Fr as F, Config, Bls12_381};
 use ark_std::{rand::Rng, UniformRand};
-use ark_poly_commit::kzg10::{Commitment, Randomness};
+use ark_poly_commit::kzg10::{Commitment, Randomness, UniversalParams, KZG10};
 
 use crate::common::calculate_hash;
 use crate::error::Error;
@@ -63,7 +63,9 @@ impl VerkleNode {
         let prover = Prover::setup(&vectors, max_bits).unwrap();
         let p = prover.p.clone();
         let i = prover.i.clone();
-        let com_p = prover.commit(&p, rng).expect("");
+        let pcs: UniversalParams<Bls12<ark_bls12_381::Config>> = KZG10::<Bls12_381, UniPoly_381>::setup(prover.p.coeffs.len().checked_next_power_of_two().unwrap(), false, rng).expect("Setup failed");
+
+        let com_p = prover.commit(&p, pcs).expect("");
         let hash_of_com_p = calculate_hash(&com_p);
 
         let nodes = generate_nodes_from(liabilities.clone(), Some(children.clone()));

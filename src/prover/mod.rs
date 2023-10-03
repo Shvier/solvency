@@ -1,10 +1,12 @@
 use ark_ec::bls12::Bls12;
-use ark_ec::{VariableBaseMSM, CurveGroup};
+use ark_ec::scalar_mul::fixed_base::FixedBase;
+use ark_ec::{VariableBaseMSM, CurveGroup, AffineRepr};
 use ark_ec::pairing::Pairing;
 use ark_poly::{Radix2EvaluationDomain, EvaluationDomain, DenseUVPolynomial, Polynomial};
+use ark_poly_commit::{Evaluations, PolynomialCommitment};
 use ark_poly_commit::kzg10::{KZG10, Commitment, Randomness, UniversalParams, Powers, VerifierKey, Proof};
 use ark_std::borrow::Cow;
-use ark_bls12_381::Bls12_381;
+use ark_bls12_381::{Bls12_381, Config, G2Affine};
 use ark_bls12_381::Fr as F;
 use ark_std::{fmt, vec::Vec, start_timer, end_timer};
 use ark_poly::univariate::DensePolynomial;
@@ -42,7 +44,7 @@ impl Prover {
     pub fn commit(
         &self, 
         poly: &UniPoly_381,
-        pcs: UniversalParams<Bls12_381>,
+        pcs: &UniversalParams<Bls12_381>,
     ) -> Result<(Commitment<Bls12_381>, Randomness<F, UniPoly_381>), Error> {
         let max_degree = poly.coeffs.len().checked_next_power_of_two().expect("Unsupported degree");
         let powers_of_g = pcs.powers_of_g[..=max_degree].to_vec();
@@ -59,10 +61,10 @@ impl Prover {
 
     pub fn compute_proof(
         poly: &UniPoly_381,
+        pcs: &UniversalParams<Bls12_381>,
         point: F,
-        pcs: UniversalParams<Bls12_381>,
-        r: Randomness<F, UniPoly_381>,
-    ) -> Result<(Proof<Bls12_381>, VerifierKey<Bls12_381>), Error> {
+        rand: Randomness<F, UniPoly_381>,
+    ) -> Result<Proof<Bls12_381>, Error> {
         let max_degree = poly.coeffs.len().checked_next_power_of_two().expect("Unsupported degree");
         let powers_of_g = pcs.powers_of_g[..=max_degree].to_vec();
         let powers_of_gamma_g = (0..=max_degree)
@@ -72,7 +74,7 @@ impl Prover {
             powers_of_g: Cow::Owned(powers_of_g),
             powers_of_gamma_g: Cow::Owned(powers_of_gamma_g),
         };
-        let (witness, hiding_witness_poly): (UniPoly_381, Option<UniPoly_381>) = KZG10::<Bls12_381, UniPoly_381>::compute_witness_polynomial(poly, point, &r).unwrap();
+        let (witness, hiding_witness_poly): (UniPoly_381, Option<UniPoly_381>) = KZG10::<Bls12_381, UniPoly_381>::compute_witness_polynomial(poly, point, &rand).unwrap();
         let (num_leading_zeros, witness_coeffs) = skip_leading_zeros_and_convert_to_bigints(&witness);
         let witness_comm_time = start_timer!(|| "Computing commitment to witness polynomial");
         let mut w = <<Bls12_381 as Pairing>::G1 as VariableBaseMSM>::msm_bigint(
@@ -82,7 +84,7 @@ impl Prover {
         end_timer!(witness_comm_time);
 
         let random_v = if let Some(hiding_witness_polynomial) = hiding_witness_poly {
-            let blinding_p = &r.blinding_polynomial;
+            let blinding_p = &rand.blinding_polynomial;
             let blinding_eval_time = start_timer!(|| "Evaluating random polynomial");
             let blinding_evaluation = blinding_p.evaluate(&point);
             end_timer!(blinding_eval_time);
@@ -99,21 +101,14 @@ impl Prover {
         } else {
             None
         };
-
-        let vk = VerifierKey::<Bls12_381> {
-            g: pcs.powers_of_g[0],
-            gamma_g: pcs.powers_of_gamma_g[&0],
-            h: pcs.h,
-            beta_h: pcs.beta_h,
-            prepared_h: pcs.prepared_h.clone(),
-            prepared_beta_h: pcs.prepared_beta_h.clone(),
-        };
     
         let proof = Proof {
             w: w.into_affine(),
             random_v: random_v,
         };
-        Ok((proof, vk))
+        Ok(proof)
+    }
+
     }    
 
     fn extend_liabilities(
@@ -163,6 +158,9 @@ fn convert_to_bigints<F: PrimeField>(p: &[F]) -> Vec<F::BigInt> {
 fn test_proof() {
     use ark_std::test_rng;
     use ark_ec::bls12::Bls12;
+    use ark_ff::FftField;
+    use ark_ff::Field;
+    use ark_std::Zero;
 
     const MAX_BITS: usize = 16;
 
@@ -185,7 +183,15 @@ fn test_proof() {
     let (com, r) = prover.commit(&prover.p.clone(), &pcs.clone()).expect("Commitment failed");
     let point = F::from(2);
     let value = prover.p.evaluate(&point);
-    let (proof, vk) = Prover::compute_proof(&prover.p, &pcs, point, r).expect("Computing proof failed");
+    let proof = Prover::compute_proof(&prover.p, &pcs, point, r).expect("Computing proof failed");
+    let vk = VerifierKey::<Bls12_381> {
+        g: pcs.powers_of_g[0],
+        gamma_g: pcs.powers_of_gamma_g[&0],
+        h: pcs.h,
+        beta_h: pcs.beta_h,
+        prepared_h: pcs.prepared_h.clone(),
+        prepared_beta_h: pcs.prepared_beta_h.clone(),
+    };
     let result = KZG10::<Bls12_381, UniPoly_381>::check(&vk, &com, point, value, &proof).expect("Checking proof failed");
     assert!(result);
 }

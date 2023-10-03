@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 use ark_ec::{bls12::Bls12, pairing::Pairing};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain, univariate::DensePolynomial};
@@ -78,7 +76,7 @@ impl VerkleNode {
 
         let hash_of_com_p = calculate_hash(&comm);
 
-        let nodes = generate_nodes_from(liabilities.clone(), Some(children.clone()));
+        let nodes = generate_nodes_from(total, liabilities.clone(), Some(children.clone()));
         Ok(Self { 
             id: hash_of_com_p,
             idx: 0,
@@ -143,8 +141,10 @@ impl VerkleNode {
     }
 }
 
-fn generate_nodes_from(liabilities: Vec<u64>, children: Option<Vec<VerkleNode>>) -> Vec<VerkleNode> {
+fn generate_nodes_from(total: u64, liabilities: Vec<u64>, children: Option<Vec<VerkleNode>>) -> Vec<VerkleNode> {
     let mut nodes = Vec::<VerkleNode>::new();
+    let total_node = VerkleNode::new(0, 0, total, NodeKind::Balance, None);
+    nodes.push(total_node);
     let vectors = liabilities.clone();
     for (idx, l) in liabilities.into_iter().enumerate() {
         if idx == 0 {

@@ -42,17 +42,17 @@ fn main() {
     let max_degree = ((number_of_liabilities - 1) / 2 * MAX_BITS + 1).checked_next_power_of_two().expect("");
     let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
 
-    let group1 = VerkleNode::from(rng, &pcs, l1.clone(), None, MAX_BITS).expect("");
-    let group2 = VerkleNode::from(rng, &pcs, l2.clone(), None, MAX_BITS).expect("");
-    let group3 = VerkleNode::from(rng, &pcs, l3.clone(), None, MAX_BITS).expect("");
+    let group1 = VerkleNode::from(&pcs, l1.clone(), None, MAX_BITS).expect("");
+    let group2 = VerkleNode::from(&pcs, l2.clone(), None, MAX_BITS).expect("");
+    let group3 = VerkleNode::from(&pcs, l3.clone(), None, MAX_BITS).expect("");
 
     let groups = [[group1.clone()], [group2]].concat();
-    let intermediate = VerkleNode::from(rng, &pcs, [].to_vec(), Some(groups), MAX_BITS).expect("");
-    let root = VerkleNode::from(rng, &pcs, [].to_vec(), Some([[intermediate.clone()], [group3]].concat()), MAX_BITS).expect("");
+    let intermediate = VerkleNode::from(&pcs, [].to_vec(), Some(groups), MAX_BITS).expect("");
+    let root = VerkleNode::from(&pcs, [].to_vec(), Some([[intermediate.clone()], [group3]].concat()), MAX_BITS).expect("");
     assert_eq!(root.value, 240);
 
     let path = VerkleNode::generate_auth_path(&root, &[].to_vec());
-    Verifier::verify(&path, 1, 20, &root);
+    Verifier::verify(&path, 1, 20, &root, &pcs);
 }
 
 fn generate_liabilities() -> Vec<u64> {

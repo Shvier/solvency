@@ -1,15 +1,15 @@
 use std::fmt;
 
-use ark_ec::{bls12::Bls12, pairing::Pairing};
+use ark_ec::bls12::Bls12;
 use ark_poly::univariate::DensePolynomial;
 use ark_bls12_381::{Fr as F, Config, Bls12_381};
-use ark_poly_commit::kzg10::{Commitment, Randomness};
+use ark_poly_commit::kzg10::{Commitment, Proof};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum NodeKind {
     Poly(
-        DensePolynomial<F>, 
-        (Commitment<Bls12<Config>>, Randomness<F, DensePolynomial<<Bls12_381 as Pairing>::ScalarField>>), 
+        Commitment<Bls12<Config>>, 
+        Vec<Proof<Bls12_381>>,
         DensePolynomial<F>
     ),
     Balance,

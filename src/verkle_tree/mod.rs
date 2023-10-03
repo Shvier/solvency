@@ -6,11 +6,13 @@ use ark_ec::{bls12::Bls12, pairing::Pairing};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain, univariate::DensePolynomial};
 use ark_bls12_381::{Fr as F, Config, Bls12_381};
 use ark_std::{rand::Rng, UniformRand};
-use ark_poly_commit::kzg10::{Commitment, Randomness, UniversalParams, KZG10};
+use ark_poly_commit::kzg10::{Commitment, Randomness, UniversalParams, KZG10, Proof};
+use ark_ff::{FftField, Field};
 
 use crate::common::calculate_hash;
 use crate::error::Error;
 use crate::prover::data_structures::Prover;
+use crate::verifier::Verifier;
 
 pub mod tree;
 use tree::*;
@@ -21,8 +23,7 @@ type D = Radix2EvaluationDomain::<F>;
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
 
 impl VerkleNode {
-    pub fn from<R: Rng>(
-        rng: &mut R,
+    pub fn from(
         pcs: &UniversalParams<Bls12_381>,
         liabilities: Vec<u64>,
         children: Option<Vec<VerkleNode>>,
@@ -46,8 +47,8 @@ impl VerkleNode {
                             vectors.push(node.value);
                             total += node.value;
                         }
-                        NodeKind::Poly(_, com_p, _) => {
-                            let hash_com_p = calculate_hash(&com_p);
+                        NodeKind::Poly(comm, _, _) => {
+                            let hash_com_p = calculate_hash(&comm);
                             vectors.push(hash_com_p);
                             vectors.push(node.value);
                             total += node.value;
@@ -65,15 +66,24 @@ impl VerkleNode {
         let p = prover.p.clone();
         let i = prover.i.clone();
 
-        let com_p = prover.commit(&p, pcs).expect("");
-        let hash_of_com_p = calculate_hash(&com_p);
+        let (comm, rand) = prover.commit(&p, pcs).expect("");
+        let omega = F::get_root_of_unity((vectors.len() as u64).checked_next_power_of_two().unwrap()).expect("");
+        let proofs: Vec<Proof<Bls12_381>> = (0..vectors.len())
+        .map(| idx | {
+            let point = omega.pow(&[idx as u64]);
+            let proof = Prover::compute_proof(&p, &pcs, point, rand.clone()).expect("");
+            proof
+        })
+        .collect();
+
+        let hash_of_com_p = calculate_hash(&comm);
 
         let nodes = generate_nodes_from(liabilities.clone(), Some(children.clone()));
         Ok(Self { 
             id: hash_of_com_p,
             idx: 0,
             value: total,
-            kind: NodeKind::Poly(p, com_p, i),
+            kind: NodeKind::Poly(comm, proofs, i),
             children: Some(nodes),
          })
     }
@@ -174,9 +184,9 @@ fn generate_nodes_from(liabilities: Vec<u64>, children: Option<Vec<VerkleNode>>)
                 let mut node = child.clone();
                 match child.kind {
                     NodeKind::Balance | NodeKind::UserId | NodeKind::ComHash => {}
-                    NodeKind::Poly(_, com_p, _) => {
+                    NodeKind::Poly(comm, _, _) => {
                         // insert the node that contains the hash value of the commitment
-                        let hash_value = calculate_hash(&com_p);
+                        let hash_value = calculate_hash(&comm);
                         let node = VerkleNode {
                             id: hash_value,
                             idx: idx,
@@ -210,12 +220,11 @@ fn generate_verkle_node() -> VerkleNode {
     let max_degree = ((liabilities.len() - 1) / 2 * MAX_BITS + 1).checked_next_power_of_two().expect("");
     let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
 
-    VerkleNode::from(rng, &pcs, liabilities.clone(), None, MAX_BITS).expect("Group setup failed")
+    VerkleNode::from(&pcs, liabilities.clone(), None, MAX_BITS).expect("Group setup failed")
 }
 
 #[test]
 fn test_verkle_node_from_terminal_nodes() {
-    use ark_poly::Polynomial;
     use ark_std::test_rng;
     use ark_ff::{FftField, Field};
 
@@ -228,19 +237,20 @@ fn test_verkle_node_from_terminal_nodes() {
     let max_degree = ((liabilities.len() - 1) / 2 * MAX_BITS + 1).checked_next_power_of_two().expect("");
     let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
 
-    let root = VerkleNode::from(rng, &pcs, liabilities.clone(), None, MAX_BITS).expect("Node setup failed");
+    let root = VerkleNode::from(&pcs, liabilities.clone(), None, MAX_BITS).expect("Node setup failed");
     assert_eq!(root.value, 80);
 
     match root.kind {
         NodeKind::Balance | NodeKind::UserId | NodeKind::ComHash => { assert!(false) }
-        NodeKind::Poly(p, _, _) => {
+        NodeKind::Poly(comm, proofs, _) => {
             let len = liabilities.len().checked_next_power_of_two().unwrap();
             let omega = F::get_root_of_unity(len as u64).unwrap();
             for idx in 0..len - 1 {
                 let point = omega.pow(&[idx as u64]);
                 let target = F::from(liabilities[idx]);
-                let eval = p.evaluate(&point);
-                assert_eq!(eval, target);
+                let proof = proofs[idx];
+                let result = Verifier::check(&pcs, &comm, point, target, &proof).expect("");
+                assert!(result);
             }
         }
     };
@@ -248,7 +258,6 @@ fn test_verkle_node_from_terminal_nodes() {
 
 #[test]
 fn test_verkle_group_intermediate_nodes() {
-    use ark_poly::Polynomial;
     use ark_std::test_rng;
     use ark_ff::{FftField, Field};
 
@@ -265,40 +274,43 @@ fn test_verkle_group_intermediate_nodes() {
     let max_degree = ((liabilities.len() - 1) / 2 * MAX_BITS + 1).checked_next_power_of_two().expect("");
     let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
 
-    let root = VerkleNode::from(rng, &pcs, [].to_vec(), Some(nodes.clone()), MAX_BITS).expect("Root setup failed");
+    let root = VerkleNode::from(&pcs, [].to_vec(), Some(nodes.clone()), MAX_BITS).expect("Root setup failed");
     assert_eq!(root.value, 160);
 
-    let root = VerkleNode::from(rng, &pcs, liabilities.clone(), Some(nodes.clone()), MAX_BITS).expect("Root setup failed");
+    let root = VerkleNode::from(&pcs, liabilities.clone(), Some(nodes.clone()), MAX_BITS).expect("Root setup failed");
     assert_eq!(root.value, 240);
 
     match root.kind {
         NodeKind::Balance | NodeKind::UserId | NodeKind::ComHash => { assert!(false) }
-        NodeKind::Poly(p, _, _) => {
-            let len = (liabilities.len() + nodes.len() * 2).checked_next_power_of_two().unwrap();
-            let omega = F::get_root_of_unity(len as u64).unwrap();
+        NodeKind::Poly(comm, proofs, _) => {
+            let children = root.children.unwrap();
+            let len = children.len();
+            let omega = F::get_root_of_unity(len.checked_next_power_of_two().unwrap() as u64).unwrap();
             for idx in 1..liabilities.len() - 1 {
+                let proof = proofs[idx];
                 let point = omega.pow(&[idx as u64]);
                 let target = F::from(liabilities[idx]);
-                let eval = p.evaluate(&point);
-                assert_eq!(eval, target);
+                let result = Verifier::check(&pcs, &comm, point, target, &proof).expect("");
+                assert!(result);
             }
 
-            let mut j = 0;
             for idx in (liabilities.len()..liabilities.len() + nodes.len() * 2 - 1).step_by(2) {
-                let node = &nodes[j];
+                let node: &VerkleNode = &children[idx];
                 match &node.kind {
                     NodeKind::Balance | NodeKind::UserId | NodeKind::ComHash => {}
-                    NodeKind::Poly(_, com_p, _) => {
-                        let hash_value_of_com_p = calculate_hash(&com_p);
+                    NodeKind::Poly(comm, _, _) => {
+                        let proof: Proof<Bls12<Config>> = proofs[idx];
+                        let hash_value_of_com_p = calculate_hash(&comm);
                         let point_com = omega.pow(&[idx as u64]);
-                        let eval_hash = p.evaluate(&point_com);
-                        assert_eq!(F::from(hash_value_of_com_p), eval_hash);
+                        let result = Verifier::check(&pcs, &comm, point_com, F::from(hash_value_of_com_p), &proof).expect("");
+                        assert!(result);
                     }
                 }
+                let node: &VerkleNode = &children[idx + 1];
+                let proof: Proof<Bls12<Config>> = proofs[idx + 1];
                 let point_value = omega.pow(&[(idx + 1) as u64]);
-                let eval_value = p.evaluate(&point_value);
-                assert_eq!(F::from(node.value), eval_value);
-                j += 1;
+                let result = Verifier::check(&pcs, &comm, point_value, F::from(node.value), &proof).expect("");
+                assert!(result);
             }
         }
     }

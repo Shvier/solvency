@@ -23,6 +23,7 @@ type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
 impl VerkleNode {
     pub fn from<R: Rng>(
         rng: &mut R,
+        pcs: &UniversalParams<Bls12_381>,
         liabilities: Vec<u64>,
         children: Option<Vec<VerkleNode>>,
         max_bits: usize, 
@@ -63,7 +64,6 @@ impl VerkleNode {
         let prover = Prover::setup(&vectors, max_bits).unwrap();
         let p = prover.p.clone();
         let i = prover.i.clone();
-        let pcs: UniversalParams<Bls12<ark_bls12_381::Config>> = KZG10::<Bls12_381, UniPoly_381>::setup(prover.p.coeffs.len().checked_next_power_of_two().unwrap(), false, rng).expect("Setup failed");
 
         let com_p = prover.commit(&p, pcs).expect("");
         let hash_of_com_p = calculate_hash(&com_p);
@@ -207,7 +207,10 @@ fn generate_verkle_node() -> VerkleNode {
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
 
-    VerkleNode::from(rng, liabilities.clone(), None, MAX_BITS).expect("Group setup failed")
+    let max_degree = ((liabilities.len() - 1) / 2 * MAX_BITS + 1).checked_next_power_of_two().expect("");
+    let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
+
+    VerkleNode::from(rng, &pcs, liabilities.clone(), None, MAX_BITS).expect("Group setup failed")
 }
 
 #[test]
@@ -222,7 +225,10 @@ fn test_verkle_node_from_terminal_nodes() {
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
 
-    let root = VerkleNode::from(rng, liabilities.clone(), None, MAX_BITS).expect("Node setup failed");
+    let max_degree = ((liabilities.len() - 1) / 2 * MAX_BITS + 1).checked_next_power_of_two().expect("");
+    let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
+
+    let root = VerkleNode::from(rng, &pcs, liabilities.clone(), None, MAX_BITS).expect("Node setup failed");
     assert_eq!(root.value, 80);
 
     match root.kind {
@@ -255,10 +261,14 @@ fn test_verkle_group_intermediate_nodes() {
     let node_1 = generate_verkle_node();
     let node_2 = generate_verkle_node();
     let nodes = [node_1, node_2].to_vec();
-    let root = VerkleNode::from(rng, [].to_vec(), Some(nodes.clone()), MAX_BITS).expect("Root setup failed");
+
+    let max_degree = ((liabilities.len() - 1) / 2 * MAX_BITS + 1).checked_next_power_of_two().expect("");
+    let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
+
+    let root = VerkleNode::from(rng, &pcs, [].to_vec(), Some(nodes.clone()), MAX_BITS).expect("Root setup failed");
     assert_eq!(root.value, 160);
 
-    let root = VerkleNode::from(rng, liabilities.clone(), Some(nodes.clone()), MAX_BITS).expect("Root setup failed");
+    let root = VerkleNode::from(rng, &pcs, liabilities.clone(), Some(nodes.clone()), MAX_BITS).expect("Root setup failed");
     assert_eq!(root.value, 240);
 
     match root.kind {

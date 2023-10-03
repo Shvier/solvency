@@ -171,12 +171,21 @@ fn test_proof() {
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
 
     let prover = Prover::setup(&liabilities, MAX_BITS).unwrap();
-    let pcs: UniversalParams<Bls12<ark_bls12_381::Config>> = KZG10::<Bls12_381, UniPoly_381>::setup(prover.p.coeffs.len().checked_next_power_of_two().unwrap(), false, rng).expect("Setup failed");
+    let pcs: UniversalParams<Bls12<ark_bls12_381::Config>> = KZG10::<Bls12_381, UniPoly_381>::setup(prover.p.coeffs.len().checked_next_power_of_two().unwrap(), true, rng).expect("Setup failed");
+    let max_degree = prover.p.coeffs.len().checked_next_power_of_two().unwrap();
+    let powers_of_g = pcs.powers_of_g[..=max_degree].to_vec();
+    let powers_of_gamma_g = (0..=max_degree)
+        .map(|i| pcs.powers_of_gamma_g[&i])
+        .collect();
+    let powers: Powers<Bls12_381> = Powers {
+        powers_of_g: Cow::Owned(powers_of_g),
+        powers_of_gamma_g: Cow::Owned(powers_of_gamma_g),
+    };
 
-    let (com, r) = prover.commit(&prover.p.clone(), pcs.clone()).expect("Commitment failed");
+    let (com, r) = prover.commit(&prover.p.clone(), &pcs.clone()).expect("Commitment failed");
     let point = F::from(2);
     let value = prover.p.evaluate(&point);
-    let (proof, vk) = Prover::compute_proof(&prover.p, point, pcs, r).expect("Computing proof failed");
+    let (proof, vk) = Prover::compute_proof(&prover.p, &pcs, point, r).expect("Computing proof failed");
     let result = KZG10::<Bls12_381, UniPoly_381>::check(&vk, &com, point, value, &proof).expect("Checking proof failed");
     assert!(result);
 }

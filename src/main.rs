@@ -4,6 +4,7 @@ use ark_ec::pairing::Pairing;
 use ark_bls12_381::Bls12_381;
 use ark_poly::Radix2EvaluationDomain;
 use ark_poly::univariate::DensePolynomial;
+use ark_poly_commit::kzg10::KZG10;
 use ark_std::test_rng;
 use ark_std::rand::Rng;
 use ark_bls12_381::Fr as F;
@@ -36,13 +37,18 @@ fn main() {
     let l1 = vec![80, 1, 20, 2, 50, 3, 10];
     let l2 = vec![60, 4, 10, 5, 30, 6, 10, 7, 10];
     let l3 = vec![100, 8, 30, 9, 70];
-    let group1 = VerkleNode::from(rng, l1, None, MAX_BITS).expect("");
-    let group2 = VerkleNode::from(rng, l2, None, MAX_BITS).expect("");
-    let group3 = VerkleNode::from(rng, l3, None, MAX_BITS).expect("");
+
+    let number_of_liabilities = l1.len() + l2.len() + l3.len();
+    let max_degree = ((number_of_liabilities - 1) / 2 * MAX_BITS + 1).checked_next_power_of_two().expect("");
+    let pcs = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, false, rng).expect("Setup failed");
+
+    let group1 = VerkleNode::from(rng, &pcs, l1.clone(), None, MAX_BITS).expect("");
+    let group2 = VerkleNode::from(rng, &pcs, l2.clone(), None, MAX_BITS).expect("");
+    let group3 = VerkleNode::from(rng, &pcs, l3.clone(), None, MAX_BITS).expect("");
 
     let groups = [[group1.clone()], [group2]].concat();
-    let intermediate = VerkleNode::from(rng, [].to_vec(), Some(groups), MAX_BITS).expect("");
-    let root = VerkleNode::from(rng, [].to_vec(), Some([[intermediate.clone()], [group3]].concat()), MAX_BITS).expect("");
+    let intermediate = VerkleNode::from(rng, &pcs, [].to_vec(), Some(groups), MAX_BITS).expect("");
+    let root = VerkleNode::from(rng, &pcs, [].to_vec(), Some([[intermediate.clone()], [group3]].concat()), MAX_BITS).expect("");
     assert_eq!(root.value, 240);
 
     let path = VerkleNode::generate_auth_path(&root, &[].to_vec());

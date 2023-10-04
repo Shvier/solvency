@@ -146,18 +146,8 @@ fn generate_nodes_from(total: u64, liabilities: Vec<u64>, children: Option<Vec<V
     let total_node = VerkleNode::new(0, 0, total, NodeKind::Balance, None);
     nodes.push(total_node);
     let vectors = liabilities.clone();
-    for (idx, l) in liabilities.into_iter().enumerate() {
-        if idx == 0 {
-            let node = VerkleNode { 
-                id: vectors[idx],
-                idx: idx,
-                value: l, 
-                kind: NodeKind::Balance, 
-                children: None 
-            };
-            nodes.push(node);
-            continue;
-        }
+    for idx in 1..liabilities.len() {
+        let l = liabilities[idx];
         let node: VerkleNode = match idx % 2 { // even positions store liability
             0 => VerkleNode { 
                     id: vectors[idx - 1],

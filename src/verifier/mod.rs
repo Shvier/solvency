@@ -1,13 +1,10 @@
-use std::collections::HashMap;
-
 use ark_ec::pairing::Pairing;
 use ark_poly::univariate::DensePolynomial;
-use ark_poly_commit::{kzg10::{KZG10, VerifierKey, Commitment, Proof, UniversalParams}, Error};
-use ark_std::{test_rng, UniformRand};
+use ark_poly_commit::{kzg10::{KZG10, VerifierKey, Commitment, UniversalParams, Proof}, Error};
 use ark_bls12_381::{Fr as F, Bls12_381};
 use ark_ff::{FftField, Field};
 
-use crate::{verkle_tree::tree::*, common::calculate_hash};
+use crate::{verkle_tree::tree::*, common::calculate_hash, prover::data_structures::SolProof};
 
 #[allow(non_camel_case_types)]
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
@@ -18,37 +15,53 @@ pub struct Verifier {
 
 impl Verifier {
     pub fn verify(
-        path: &HashMap<u64, Vec<u64>>, 
+        sol_proof: &SolProof,
+        pcs: &UniversalParams<Bls12_381>,
         user_id: u64, 
         balance: u64, 
-        root: &VerkleNode, 
-        pcs: &UniversalParams<Bls12_381>
     ) {
-        let mut path: Vec<u64>= path.get(&user_id).expect("UserId not found").clone();
-        path.reverse();
-        let nodes = Verifier::generate_nodes_from(path.clone(), &root);
-        let (id_node, value_node) = &nodes[0];
-        assert_eq!(id_node.id, user_id);
-        assert_eq!(value_node.value, balance);
-        for idx in 1..nodes.len() {
-            let cur = &nodes[idx];
-            let prev = &nodes[idx - 1];
-            let degree = cur.1.children.as_deref().unwrap().len().checked_next_power_of_two().unwrap();
-            let omega = F::get_root_of_unity(degree as u64).unwrap();
-            match &cur.1.kind {
-                NodeKind::Poly(comm, proofs, _) => {
-                    let hash_of_comm = calculate_hash(comm);
-                    assert_eq!(hash_of_comm, cur.0.id);
-                    let id_idx = prev.0.idx;
+        assert!(sol_proof.children.len() >= 2);
+        let proof_nodes = &sol_proof.children;
+        let self_node = &proof_nodes[0];
+        assert_eq!(self_node.0.id, user_id);
+
+        let (id_node, value_node) = &proof_nodes[1];
+        match &value_node.kind {
+            ProofValueNodeKind::Poly(comm, proofs, omega) => {
+                let hash_of_comm = calculate_hash(&comm);
+                assert_eq!(hash_of_comm, id_node.id);
+                let user_id_idx = self_node.0.idx;
+                let user_bal_idx = self_node.1.idx;
+                let user_id_proof = proofs[user_id_idx];
+                let user_bal_proof = proofs[user_bal_idx];
+                let user_id_check = Verifier::check(pcs, &comm, omega.pow(&[user_id_idx as u64]), F::from(user_id), &user_id_proof).expect("");
+                assert!(user_id_check);
+                let user_bal_check = Verifier::check(pcs, &comm, omega.pow(&[user_bal_idx as u64]), F::from(balance), &user_bal_proof).expect("");
+                assert!(user_bal_check);
+            }
+            ProofValueNodeKind::Balance => {}
+        }
+
+        for idx in 2..proof_nodes.len() {
+            let (cur_id_node, cur_value_node) = &proof_nodes[idx];
+            match &cur_value_node.kind {
+                ProofValueNodeKind::Poly(comm, proofs, omega) => {
+                    assert_eq!(cur_id_node.id, calculate_hash(&comm));
+                    let (prev_id_node, prev_value_node) = &proof_nodes[idx - 1];
+        
+                    let id_idx: usize = prev_id_node.idx;
                     let id_proof = proofs[id_idx];
-                    let id_check = Verifier::check(pcs, comm, omega.pow(&[id_idx as u64]), F::from(prev.0.id), &id_proof).expect("");
+                    let id_check = Verifier::check(pcs, &comm, omega.pow(&[id_idx as u64]), F::from(prev_id_node.id), &id_proof).expect("");
                     assert!(id_check);
-                    let value_idx = prev.1.idx;
-                    let value_proof = proofs[value_idx];
-                    let value_check = Verifier::check(pcs, comm, omega.pow(&[value_idx as u64]), F::from(prev.1.value), &value_proof).expect("");
-                    assert!(value_check);
+        
+                    // TODO
+                    // the verifying process is different from the above one
+                    // let value_idx = prev_value_node.idx;
+                    // let value_proof = proofs[value_idx];
+                    // let value_check = Verifier::check(pcs, &comm, omega.pow(&[value_idx as u64]), F::from(prev_value_node.id), &value_proof).expect("");
+                    // assert!(value_check);
                 }
-                _ => {}
+                ProofValueNodeKind::Balance => {}
             }
         }
     }
@@ -69,23 +82,5 @@ impl Verifier {
             prepared_beta_h: pcs.prepared_beta_h.clone(),
         };
         KZG10::<Bls12_381, UniPoly_381>::check(&vk, comm, point, value, proof)
-    }
-}
-
-impl Verifier {
-    #[inline]
-    fn generate_nodes_from(mut path: Vec<u64>, root: &VerkleNode) -> Vec<(VerkleNode, VerkleNode)> {
-        if path.len() <= 0 {
-            return [].to_vec();
-        }
-        let pos = path.pop().unwrap() as usize;
-        let children = root.children.as_deref().expect("Root is empy");
-        let value_node = &children[pos];
-        let id_node = &children[pos - 1];
-        let mut nodes = Vec::<(VerkleNode, VerkleNode)>::new();
-        let other_nodes = Verifier::generate_nodes_from(path, value_node);
-        nodes.extend(other_nodes);
-        nodes.push((id_node.clone(), value_node.clone()));
-        nodes
     }
 }

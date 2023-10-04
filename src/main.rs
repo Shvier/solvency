@@ -1,5 +1,3 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use ark_ec::pairing::Pairing;
 use ark_bls12_381::Bls12_381;
 use ark_poly::Radix2EvaluationDomain;
@@ -10,6 +8,7 @@ use ark_std::rand::Rng;
 use ark_bls12_381::Fr as F;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use solvency::common::calculate_hash;
+use solvency::prover::data_structures::Prover;
 use solvency::verifier::Verifier;
 use solvency::verkle_tree::tree::VerkleNode;
 
@@ -51,8 +50,14 @@ fn main() {
     let root = VerkleNode::from(&pcs, [].to_vec(), Some([[intermediate.clone()], [group3]].concat()), MAX_BITS).expect("");
     assert_eq!(root.value, 240);
 
-    let path = VerkleNode::generate_auth_path(&root, &[].to_vec());
-    Verifier::verify(&path, 1, 20, &root, &pcs);
+    let final_proof = Prover::generate_grand_proof(&root);
+    let user_id = 2;
+    let proof = final_proof.get(&user_id).expect("UserId not found");
+    Verifier::verify(proof, &pcs, user_id, 50);
+    
+    let user_id = 7;
+    let proof = final_proof.get(&user_id).expect("UserId not found");
+    Verifier::verify(proof, &pcs, user_id, 10);
 }
 
 fn generate_liabilities() -> Vec<u64> {

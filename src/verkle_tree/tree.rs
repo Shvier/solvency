@@ -4,6 +4,9 @@ use ark_ec::bls12::Bls12;
 use ark_poly::univariate::DensePolynomial;
 use ark_bls12_381::{Fr as F, Config, Bls12_381};
 use ark_poly_commit::kzg10::{Commitment, Proof};
+use ark_ff::FftField;
+
+use crate::error::Error;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum NodeKind {
@@ -53,4 +56,64 @@ impl VerkleNode {
             children: children 
         }
     }
+
+    pub fn to_id_node(&self) -> Result<ProofIdNode, Error> {
+        match &self.kind {
+            NodeKind::ComHash | NodeKind::Balance | NodeKind::UserId => {
+                let node = ProofIdNode {
+                    id: self.id,
+                    idx: self.idx,
+                };
+                Ok(node)
+            }
+            _ => {
+                Err(Error::InvalidNodeType)
+            }
+        }
+    }
+
+    pub fn to_value_node(&self) -> Result<ProofValueNode, Error> {
+        match &self.kind {
+            NodeKind::Poly(comm, proofs, _) => {
+                let len = proofs.len().checked_next_power_of_two().expect("");
+                let omega = F::get_root_of_unity(len as u64).unwrap();
+                let node = ProofValueNode {
+                    id: self.id,
+                    idx: self.idx,
+                    kind: ProofValueNodeKind::Poly(comm.clone(), proofs.clone(), omega),
+                };
+                Ok(node)
+            }
+            NodeKind::Balance => {
+                let node = ProofValueNode {
+                    id: self.id,
+                    idx: self.idx,
+                    kind: ProofValueNodeKind::Balance,
+                };
+                Ok(node)
+            }
+            _ => {
+                Err(Error::InvalidNodeType)
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ProofIdNode {
+    pub id: u64,
+    pub idx: usize,
+}
+
+#[derive(Clone)]
+pub enum ProofValueNodeKind {
+    Balance,
+    Poly(Commitment<Bls12_381>, Vec<Proof<Bls12_381>>, F),
+}
+
+#[derive(Clone)]
+pub struct ProofValueNode {
+    pub id: u64, 
+    pub idx: usize,
+    pub kind: ProofValueNodeKind,
 }

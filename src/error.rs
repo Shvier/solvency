@@ -1,7 +1,7 @@
 use ark_std::fmt;
 
 pub enum Error {
-
+    InvalidNodeType,
 }
 
 impl fmt::Debug for Error {

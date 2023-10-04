@@ -1,5 +1,7 @@
-use ark_bls12_381::Fr as F;
+use ark_bls12_381::{Fr as F, Bls12_381};
 use ark_poly::univariate::DensePolynomial;
+
+use crate::verkle_tree::tree::{ProofIdNode, ProofValueNode};
 
 pub struct Prover {
     pub max_bits: usize,
@@ -7,6 +9,11 @@ pub struct Prover {
     pub i: DensePolynomial<F>,
     pub liabilities: Vec<u64>,
     pub aux_vec: Vec<u64>,
+}
+
+pub struct SolProof {
+    pub root: ProofValueNode,
+    pub children: Vec<(ProofIdNode, ProofValueNode)>,
 }
 
 #[cfg(test)]

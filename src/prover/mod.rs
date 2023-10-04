@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use ark_ec::bls12::Bls12;
 use ark_ec::scalar_mul::fixed_base::FixedBase;
 use ark_ec::{VariableBaseMSM, CurveGroup, AffineRepr};
@@ -14,6 +16,7 @@ use ark_ff::PrimeField;
 
 use crate::Error;
 use crate::common::calculate_hash;
+use crate::verkle_tree::tree::{VerkleNode, ProofIdNode, ProofValueNode};
 
 pub mod data_structures;
 use data_structures::*;
@@ -109,7 +112,36 @@ impl Prover {
         Ok(proof)
     }
 
-    }    
+    pub fn generate_grand_proof(
+        root: &VerkleNode,
+    ) -> HashMap::<u64, SolProof> {
+        let all_paths = VerkleNode::generate_auth_path(&root, &[].to_vec());
+        let mut all_proofs = HashMap::<u64, SolProof>::new();
+        for (user_id, path) in all_paths {
+            let iterator = path.clone();
+            let proof_root = root.to_value_node().expect("");
+            let mut nodes = Vec::<(ProofIdNode, ProofValueNode)>::new();
+            let mut children = root.children.as_ref().unwrap();
+            for idx in iterator {
+                if idx == 0 {
+                    continue;
+                }
+                let comm_hash_child = &children[(idx - 1) as usize];
+                let comm_hash_node = comm_hash_child.to_id_node().expect("");
+                let comm_child = &children[idx as usize];
+                let proof_node = comm_child.to_value_node().expect("");
+                nodes.push((comm_hash_node, proof_node));
+                if comm_child.children.is_none() {
+                    break;
+                }
+                children = comm_child.children.as_ref().unwrap();
+            }
+            nodes.reverse();
+            let proof = SolProof { root: proof_root, children: nodes };
+            all_proofs.insert(user_id, proof);
+        }
+        all_proofs
+    }
 
     fn extend_liabilities(
         liabilities: &Vec<u64>,

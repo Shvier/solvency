@@ -6,10 +6,9 @@ use ark_poly::{EvaluationDomain, univariate::DensePolynomial, Polynomial, Evalua
 
 impl Prover {
     pub fn compute_w1(&self) -> DensePolynomial<F> {
-        let max_bits = self.max_bits;
         let i = &self.i;
 
-        let scale_factor = max_bits + 1;
+        let scale_factor = self.max_bits;
         // i(scale_factor * x + 1)
         let i_scaled_1 = substitute_x::<F, D>(&i, scale_factor, 1); 
         // i(scale_factor * x + scale_factor)

@@ -58,22 +58,16 @@ D: EvaluationDomain<F>,
     shift: usize
 ) -> DensePolynomial<F> {
     let deg = p.coeffs.len();
-    let old_domain = D::new(deg).unwrap();
-    let old_evals = p.clone().evaluate_over_domain(old_domain).evals;
-    let old_domain_size = if deg.is_power_of_two() {
-        deg
-    } else {
-        deg.checked_next_power_of_two().expect("Unsatified next power of two")
-    } as usize;
-    let new_domain_size = old_domain_size / scale;
-    let new_domain = D::new(new_domain_size).expect("Unsupported domain size");
+    let domain = D::new(deg).unwrap();
+    let old_evals = p.clone().evaluate_over_domain(domain).evals;
     let mut new_evals = Vec::<F>::new();
-    let mut idx = shift;
-    while idx < old_evals.len() {
-        new_evals.push(old_evals[idx]);
-        idx += scale;
+    let mut pos = shift;
+    let len = old_evals.len();
+    for _ in 0..len {
+        new_evals.push(old_evals[pos]);
+        pos = (pos + scale) % len;
     }
-    let new_eval = Evaluations::<F, D>::from_vec_and_domain(new_evals, new_domain);
+    let new_eval = Evaluations::<F, D>::from_vec_and_domain(new_evals, domain);
     new_eval.interpolate()
 }
 
@@ -119,7 +113,10 @@ fn test_substitute_x() {
     use ark_ff::Field;
     use ark_poly::{EvaluationDomain, Radix2EvaluationDomain, Polynomial};
     type D = Radix2EvaluationDomain::<F>;
-    
+    use ark_std::{UniformRand, test_rng};
+    use crate::prover::constraints::PolyCopyConstraints;
+    use ark_relations::r1cs::{ConstraintSystem, ConstraintSynthesizer};
+
     const MUL: u64 = 16;
     let i_vec = get_aux_vector();
     let domain = D::new(i_vec.len()).unwrap();
@@ -130,16 +127,30 @@ fn test_substitute_x() {
     };
 
     let i = interpolate_poly(&i_vec, domain);
-    let i_16x: DensePolynomial<ark_ff::Fp<ark_ff::MontBackend<ark_bls12_381::FrConfig, 4>, 4>> = substitute_x::<F, D>(&i, MUL as usize, 0);
-    let i_16x_15: DensePolynomial<ark_ff::Fp<ark_ff::MontBackend<ark_bls12_381::FrConfig, 4>, 4>> = substitute_x::<F, D>(&i, MUL as usize, 15);
+    let i_16x: DensePolynomial<F> = substitute_x::<F, D>(&i, MUL as usize, 0);
+    let i_16x_15: DensePolynomial<F> = substitute_x::<F, D>(&i, MUL as usize, 15);
 
-    let root = F::get_root_of_unity(domain_size/MUL).unwrap();
+    assert_eq!(i.evaluate(&raise(root_of_unity, 0)), i_16x.evaluate(&raise(root_of_unity, 0)));
 
-    assert_eq!(i.evaluate(&raise(root_of_unity, 0)), i_16x.evaluate(&raise(root, 0)));
+    assert_eq!(i.evaluate(&raise(root_of_unity, 16)), i_16x.evaluate(&raise(root_of_unity, 1)));
 
-    assert_eq!(i.evaluate(&raise(root_of_unity, 16)), i_16x.evaluate(&raise(root, 1)));
+    assert_eq!(i.evaluate(&raise(root_of_unity, 32)), i_16x.evaluate(&raise(root_of_unity, 2)));
 
-    assert_eq!(i.evaluate(&raise(root_of_unity, 15)), i_16x_15.evaluate(&raise(root, 0)));
+    assert_eq!(i.evaluate(&raise(root_of_unity, 15)), i_16x_15.evaluate(&raise(root_of_unity, 0)));
 
-    assert_eq!(i.evaluate(&raise(root_of_unity, 31)), i_16x_15.evaluate(&raise(root, 1)));
+    assert_eq!(i.evaluate(&raise(root_of_unity, 31)), i_16x_15.evaluate(&raise(root_of_unity, 1)));
+    
+    let mut rng = test_rng();
+    let point = F::rand(&mut rng);
+
+    let constraints = PolyCopyConstraints {
+        point: 2,
+        root_of_unity: root_of_unity,
+        old_coeffs: i.coeffs,
+        new_coeffs: i_16x.coeffs,
+        scale_factor: 16,
+        shift_factor: 0,
+    };
+    let cs = ConstraintSystem::new_ref();
+    constraints.generate_constraints(cs);
 }

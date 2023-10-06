@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 ark-bls12-381 = "0.4.0"
+ark-crypto-primitives = { version = "0.4.0", default-features = true, features = [ "r1cs" ] }
 ark-ec = "0.4.2"
 ark-ff = "0.4.2"
 ark-poly = "0.4.2"
@@ -14,4 +15,4 @@ ark-poly-commit = "0.4.0"
 ark-r1cs-std = "0.4.0"
 ark-relations = "0.4.0"
 ark-std = "0.4.0"
-uuid = { version = "1.4.1", features = ["v4"] }
+uuid = { version = "1.4.1", features = [ "v4" ] }

@@ -17,17 +17,6 @@ type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;
 
 type D = Radix2EvaluationDomain::<F>;
 
-struct ConstraintsVerification {
-    quotient_p: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
-    quotient_w: DensePolynomial<<Bls12_381 as Pairing>::ScalarField>,
-}
-
-impl ConstraintSynthesizer<F> for ConstraintsVerification {
-    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
-        Ok(())
-    }
-}
-
 fn main() {
     const MAX_BITS: usize = 16;
 

@@ -61,11 +61,10 @@ D: EvaluationDomain<F>,
     let domain = D::new(deg).unwrap();
     let old_evals = p.clone().evaluate_over_domain(domain).evals;
     let mut new_evals = Vec::<F>::new();
-    let mut pos = shift;
-    let len = old_evals.len();
-    for _ in 0..len {
-        new_evals.push(old_evals[pos]);
-        pos = (pos + scale) % len;
+    let mut idx = shift;
+    while idx < old_evals.len() {
+        new_evals.push(old_evals[idx]);
+        idx += scale;
     }
     let new_eval = Evaluations::<F, D>::from_vec_and_domain(new_evals, domain);
     new_eval.interpolate()
@@ -82,9 +81,9 @@ fn compare_vecs(va: &[u64], vb: &[u64]) -> bool {
 #[cfg(test)]
 fn get_aux_vector() -> Vec<u64> {
     let total = vec![80, 80];
-    let first = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 20, 60];
-    let second = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 6, 12, 25, 50, 10];
-    let third = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 0];
+    let first = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 20, 60];
+    let second = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 6, 12, 25, 50, 10];
+    let third = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 0];
     [total, first, second, third].concat()
 }
 

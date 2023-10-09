@@ -22,6 +22,7 @@ pub mod data_structures;
 use data_structures::*;
 
 pub mod solvency;
+pub mod constraints;
 
 mod utils;
 use utils::*;

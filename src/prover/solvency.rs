@@ -5,6 +5,8 @@ use super::{data_structures::*, D, constraints::PolyCopyConstraints};
 use ark_ff::{Field, FftField};
 use ark_bls12_381::Fr as F;
 use ark_poly::{EvaluationDomain, univariate::DensePolynomial, Polynomial, Evaluations, Radix2EvaluationDomain, DenseUVPolynomial};
+use ark_relations::r1cs::{ConstraintSystem, ConstraintSynthesizer};
+use ark_std::{test_rng, UniformRand};
 
 impl Prover {
     pub fn compute_w1(&self) -> DensePolynomial<F> {
@@ -18,6 +20,7 @@ impl Prover {
         let i_scaled_sf = substitute_x::<F, D>(&i, scale_factor, shift);
         // i(scale_factor * x + (scale_factor + 1))
         let i_scaled_sf_1 = substitute_x::<F, D>(&i, scale_factor, shift + 1);
+        
         &(&i_scaled_1 - &i_scaled_sf) - &i_scaled_sf_1
     }
 
@@ -76,6 +79,7 @@ impl Prover {
         let i_scaled = substitute_x::<F, D>(&i, scale_factor, 0);
         // p(omega^(2i)), all the values at even positions, that is, each user balance
         let p_even = substitute_x::<F, D>(&p, 2, 0);
+
         &i_scaled - &p_even
     }    
 
@@ -132,11 +136,11 @@ fn test_compute_w2() {
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
     let aux_vec = compute_aux_vector(&liabilities, 16);
-    let domain = D::new(liabilities.len()).expect("Unsupported domain length");
+    let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
     let prover = generate_prover();
     let w2 = prover.compute_w2(domain);
     let root_of_unity = F::get_root_of_unity(domain.size).unwrap();
-    for idx in 0..aux_vec.len() {
+    for idx in 0..liabilities.len() {
         let point = root_of_unity.pow(&[idx as u64]);
         assert!(w2.evaluate(&point).is_zero());
     }
@@ -149,14 +153,15 @@ fn test_compute_w3() {
     use ark_std::Zero;
 
     let liabilities = vec![80, 1, 20, 2, 50, 3, 10];
-    let aux_vec = compute_aux_vector(&liabilities, 15);
-    let domain = D::new(liabilities.len()).expect("Unsupported domain length");
+    let aux_vec = compute_aux_vector(&liabilities, 16);
+    let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
     let prover = generate_prover();
     let w3 = prover.compute_w3();
     let root_of_unity = F::get_root_of_unity(domain.size).unwrap();
-    for idx in 0..aux_vec.len() {
+    for idx in 0..liabilities.len() {
         let point = root_of_unity.pow(&[idx as u64]);
-        assert!(w3.evaluate(&point).is_zero());
+        let eval = w3.evaluate(&point);
+        assert!(eval.is_zero());
     }
 }
 

@@ -24,10 +24,10 @@ impl Prover {
         &(&i_scaled_1 - &i_scaled_sf) - &i_scaled_sf_1
     }
 
-    pub fn compute_w2(&self, domain: D) -> DensePolynomial<F> {
+    pub fn compute_w2(&self) -> DensePolynomial<F> {
         let scale_factor = self.max_bits + 1;
         let i = &self.i;
-        let omega = F::get_root_of_unity(domain.size).expect("Unsupported domain size");
+        let omega = F::get_root_of_unity(self.domain.size).expect("Unsupported domain size");
         let aux_vec = &self.aux_vec;
 
         // i(x + 1)
@@ -47,14 +47,14 @@ impl Prover {
             powers_of_omega[idx] = omega.pow(&[idx as u64]);
         }
         // omega^(scale_factor * i)
-        let omega_sf_power = Evaluations::<F, D>::from_vec_and_domain(powers_of_omega.clone(), domain).interpolate();
+        let omega_sf_power = Evaluations::<F, D>::from_vec_and_domain(powers_of_omega.clone(), self.domain).interpolate();
 
         let mut powers_of_omega = vec![F::from(0); power];
         for idx in (1..power).step_by(scale_factor) {
             powers_of_omega[idx] = omega.pow(&[idx as u64]);
         }
         // omega^(scale_factor * i + 1)
-        let omega_sf_power_1 = Evaluations::<F, D>::from_vec_and_domain(powers_of_omega.clone(), domain).interpolate();
+        let omega_sf_power_1 = Evaluations::<F, D>::from_vec_and_domain(powers_of_omega.clone(), self.domain).interpolate();
 
         // f(x) = x
         let linear = DensePolynomial::<F>::from_coefficients_vec([F::from(0), F::from(1)].to_vec());
@@ -89,7 +89,7 @@ impl Prover {
         let omega = F::get_root_of_unity(domain.size).expect("Unsupported domain size");
         let eval = i.evaluate(&(omega.pow(&[last_point])));
         let w1 = self.compute_w1();
-        let w2 = self.compute_w2(domain);
+        let w2 = self.compute_w2();
         let w3 = self.compute_w3();
         let w = &w1 + &(&w2 * challenge) + (&w3 * challenge.pow(&[2]));
         let w = Prover::add_assign(&w, eval * challenge.pow(&[3]), false);
@@ -138,7 +138,7 @@ fn test_compute_w2() {
     let aux_vec = compute_aux_vector(&liabilities, 16);
     let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
     let prover = generate_prover();
-    let w2 = prover.compute_w2(domain);
+    let w2 = prover.compute_w2();
     let root_of_unity = F::get_root_of_unity(domain.size).unwrap();
     for idx in 0..liabilities.len() {
         let point = root_of_unity.pow(&[idx as u64]);

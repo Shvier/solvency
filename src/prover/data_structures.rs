@@ -1,5 +1,5 @@
 use ark_bls12_381::{Fr as F, Bls12_381};
-use ark_poly::univariate::DensePolynomial;
+use ark_poly::{univariate::DensePolynomial, Radix2EvaluationDomain};
 
 use crate::verkle_tree::tree::{ProofIdNode, ProofValueNode};
 
@@ -9,6 +9,7 @@ pub struct Prover {
     pub i: DensePolynomial<F>,
     pub liabilities: Vec<u64>,
     pub aux_vec: Vec<u64>,
+    pub domain: Radix2EvaluationDomain<F>,
 }
 
 pub struct SolProof {

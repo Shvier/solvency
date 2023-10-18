@@ -38,9 +38,8 @@ impl Prover {
         let aux_vec = compute_aux_vector(&liabilities, max_bits);
         let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
         let p = interpolate_poly(&liabilities, domain);
-        let domain = D::new(aux_vec.len()).expect("Unsupported domain length");
         let i = interpolate_poly(&aux_vec, domain);
-        Ok(Self { max_bits, p, i, liabilities: liabilities.to_vec(), aux_vec })
+        Ok(Self { max_bits, p, i, liabilities: liabilities.to_vec(), aux_vec, domain })
     }
 
     pub fn commit(

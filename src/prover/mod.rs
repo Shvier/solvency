@@ -16,6 +16,7 @@ use ark_ff::PrimeField;
 
 use crate::Error;
 use crate::common::calculate_hash;
+use crate::utils::{interpolate_poly, compute_aux_vector};
 use crate::verkle_tree::tree::{VerkleNode, ProofIdNode, ProofValueNode};
 
 pub mod data_structures;
@@ -23,9 +24,6 @@ use data_structures::*;
 
 pub mod solvency;
 pub mod constraints;
-
-mod utils;
-use utils::*;
 
 #[allow(non_camel_case_types)]
 type UniPoly_381 = DensePolynomial<<Bls12_381 as Pairing>::ScalarField>;

@@ -1,4 +1,6 @@
-use super::{data_structures::*, utils::*, D};
+use crate::utils::{substitute_x, compute_aux_vector};
+
+use super::{data_structures::*, D, constraints::PolyCopyConstraints};
 
 use ark_ff::{Field, FftField};
 use ark_bls12_381::Fr as F;

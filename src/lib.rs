@@ -4,3 +4,4 @@ pub mod prover;
 pub mod verifier;
 pub mod verkle_tree;
 pub mod common;
+pub mod utils;

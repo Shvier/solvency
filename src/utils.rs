@@ -1,6 +1,17 @@
+use std::ops::Sub;
+
 use ark_poly::univariate::DensePolynomial;
-use ark_poly::{EvaluationDomain, Evaluations};
-use ark_ff::FftField;
+use ark_poly::{EvaluationDomain, Evaluations, Polynomial};
+use ark_ff::{FftField, PrimeField};
+use ark_std::rand::Rng;
+use ark_std::test_rng;
+use ark_relations::r1cs::{
+    ConstraintSystem,
+    ConstraintSynthesizer,
+    Result,
+};
+
+use crate::prover::constraints::PolyCopyConstraints;
 
 pub fn compute_aux_vector(liabilities: &Vec<u64>, max_bits: usize) -> Vec<u64> {
     let mut vec = Vec::<u64>::new();
@@ -50,24 +61,68 @@ D: EvaluationDomain<F>,
 }
 
 pub fn substitute_x<
-F: FftField,
+F: PrimeField,
 D: EvaluationDomain<F>,
 >(
     p: &DensePolynomial<F>, 
     scale: usize, 
-    shift: usize
+    shift: usize,
 ) -> DensePolynomial<F> {
     let deg = p.coeffs.len();
     let domain = D::new(deg).unwrap();
-    let old_evals = p.clone().evaluate_over_domain(domain).evals;
     let mut new_evals = Vec::<F>::new();
-    let mut idx = shift;
-    while idx < old_evals.len() {
-        new_evals.push(old_evals[idx]);
-        idx += scale;
+    let root = F::get_root_of_unity(deg as u64).unwrap();
+    let mut pos = shift;
+    for _ in 0..deg {
+        let point: F = root.pow(&[pos as u64]);
+        let eval = p.evaluate(&point);
+        new_evals.push(eval);
+        pos = pos + scale;
     }
     let new_eval = Evaluations::<F, D>::from_vec_and_domain(new_evals, domain);
-    new_eval.interpolate()
+    let new_p = new_eval.interpolate();
+
+    for idx in 0..deg {
+        let point: F = root.pow(&[idx as u64]);
+        let eval = new_p.evaluate(&point);
+        // println!("{} - {} {}", idx, eval, eval.is_zero());
+    }
+
+    let result = constrain_polys(&p.coeffs, &new_p.coeffs, scale, shift);
+    result.expect("Failed to prove copy constraints");
+    new_p
+}
+
+pub fn constrain_polys<
+F: PrimeField,
+>(
+    old_coeffs: &Vec<F>, 
+    new_coeffs: &Vec<F>, 
+    scale_factor: usize, 
+    shift_factor: usize,
+) -> Result<()> {
+    let root_of_unity = F::get_root_of_unity(old_coeffs.len() as u64).expect("Cannot find root of unity");
+    let mut rng = test_rng();
+    let point = rng.gen_range(0..new_coeffs.len());
+    let circuit = PolyCopyConstraints::<F> {
+        point,
+        root_of_unity,
+        scale_factor,
+        shift_factor,
+        old_coeffs: old_coeffs.to_vec(),
+        new_coeffs: new_coeffs.to_vec(),
+    };
+    let cs = ConstraintSystem::<F>::new_ref();
+    circuit.generate_constraints(cs)
+}
+
+pub fn elementwise_subtraction<N, IA, IB, F>(a: IA, b: IB) -> F
+where
+    N: Sub,
+    IA: IntoIterator<Item = N>,
+    IB: IntoIterator<Item = N>,
+    F: FromIterator<N> + FromIterator<<N as Sub>::Output> {
+    a.into_iter().zip(b).map(|(a, b)| a - b).collect()
 }
 
 #[cfg(test)]
@@ -111,10 +166,12 @@ fn test_substitute_x() {
     use ark_bls12_381::Fr as F;
     use ark_ff::Field;
     use ark_poly::{EvaluationDomain, Radix2EvaluationDomain, Polynomial};
-    type D = Radix2EvaluationDomain::<F>;
-    use ark_std::{UniformRand, test_rng};
-    use crate::prover::constraints::PolyCopyConstraints;
+    use ark_std::test_rng;
     use ark_relations::r1cs::{ConstraintSystem, ConstraintSynthesizer};
+
+    use crate::prover::constraints::PolyCopyConstraints;
+
+    type D = Radix2EvaluationDomain::<F>;
 
     const MUL: u64 = 16;
     let i_vec = get_aux_vector();
@@ -126,10 +183,8 @@ fn test_substitute_x() {
     };
 
     let i = interpolate_poly(&i_vec, domain);
-    let i_16x: DensePolynomial<F> = substitute_x::<F, D>(&i, MUL as usize, 0);
-    let i_16x_15: DensePolynomial<F> = substitute_x::<F, D>(&i, MUL as usize, 15);
-
-    assert_eq!(i.evaluate(&raise(root_of_unity, 0)), i_16x.evaluate(&raise(root_of_unity, 0)));
+    let i_16x = substitute_x::<F, D>(&i, MUL as usize, 0);
+    let i_16x_15 = substitute_x::<F, D>(&i, MUL as usize, 15);
 
     assert_eq!(i.evaluate(&raise(root_of_unity, 16)), i_16x.evaluate(&raise(root_of_unity, 1)));
 
@@ -138,18 +193,18 @@ fn test_substitute_x() {
     assert_eq!(i.evaluate(&raise(root_of_unity, 15)), i_16x_15.evaluate(&raise(root_of_unity, 0)));
 
     assert_eq!(i.evaluate(&raise(root_of_unity, 31)), i_16x_15.evaluate(&raise(root_of_unity, 1)));
-    
-    let mut rng = test_rng();
-    let point = F::rand(&mut rng);
 
-    let constraints = PolyCopyConstraints {
-        point: 2,
-        root_of_unity: root_of_unity,
-        old_coeffs: i.coeffs,
-        new_coeffs: i_16x.coeffs,
+    let mut rng = test_rng();
+    let point = rng.gen_range(0..i.coeffs.len());
+
+    let constraints = PolyCopyConstraints::<F> {
+        point,
+        root_of_unity,
         scale_factor: 16,
-        shift_factor: 0,
+        shift_factor: 15,
+        old_coeffs: i.coeffs,
+        new_coeffs: i_16x_15.coeffs,
     };
     let cs = ConstraintSystem::new_ref();
-    constraints.generate_constraints(cs);
+    constraints.generate_constraints(cs).expect("");
 }

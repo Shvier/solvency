@@ -118,7 +118,7 @@ fn test_compute_w1() {
     let prover = generate_prover();
     let w1 = prover.compute_w1();
     let root_of_unity = F::get_root_of_unity(domain.size).unwrap();
-    for idx in 0..aux_vec.len() {
+    for idx in 0..liabilities.len() {
         let point = root_of_unity.pow(&[idx as u64]);
         assert!(w1.evaluate(&point).is_zero());
     }

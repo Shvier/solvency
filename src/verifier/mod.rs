@@ -64,11 +64,17 @@ impl Verifier {
                     assert!(id_check);
 
                     match &prev_value_node.kind {
-                        ProofValueNodeKind::Poly(poly_proof) => {
-                            // let prev_witness = prev_proofs[0];
-                            // let prev_comm_idx = prev_value_node.idx;
-                            // let z_vanishing_check = Verifier::check(pcs, &com_z, F::from(1), F::from(0), proof).expect("");
-                            // assert!(z_vanishing_check);
+                        ProofValueNodeKind::Poly(_) => {
+                            let prev_comm_idx = prev_value_node.idx;
+                            let proof_z = cur_poly_proof.proofs[prev_comm_idx].proof_z;
+                            match proof_z {
+                                Some(proof_z) => {
+                                    let (com_z, witness_z) = proof_z;
+                                    let z_vanishing_check = Verifier::check(pcs, &com_z, F::from(1), F::from(0), &witness_z).expect("");
+                                    assert!(z_vanishing_check);
+                                }
+                                None => {}
+                            }
                         }
                         ProofValueNodeKind::Balance => {}
                     }

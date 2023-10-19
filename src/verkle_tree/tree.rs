@@ -90,7 +90,7 @@ impl VerkleNode {
         match &self.kind {
             NodeKind::Poly(poly) => {
                 let proofs = &poly.proofs;
-                let len = proofs.len().checked_next_power_of_two().expect("");
+                let len = poly.p.coeffs.len().checked_next_power_of_two().expect("");
                 let omega = F::get_root_of_unity(len as u64).unwrap();
                 let node = ProofValueNode {
                     id: self.id,

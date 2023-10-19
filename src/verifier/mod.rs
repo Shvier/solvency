@@ -21,45 +21,57 @@ impl Verifier {
         balance: u64, 
     ) {
         assert!(sol_proof.children.len() >= 2);
+        // check if the id of the first node matches the user id to ensure the following nodes are the proofs for this user
         let proof_nodes = &sol_proof.children;
         let self_node = &proof_nodes[0];
         assert_eq!(self_node.0.id, user_id);
 
+        // check if the user id and the user balance are the evaluations of the commitment to P, the second node
         let (id_node, value_node) = &proof_nodes[1];
         match &value_node.kind {
-            ProofValueNodeKind::Poly(comm, proofs, omega) => {
-                let hash_of_comm = calculate_hash(&comm);
+            ProofValueNodeKind::Poly(poly_proof) => {
+                let com_p = poly_proof.com_p;
+                let omega = poly_proof.omega;
+                let proofs = &poly_proof.proofs;
+                let hash_of_comm = calculate_hash(&com_p);
                 assert_eq!(hash_of_comm, id_node.id);
                 let user_id_idx = self_node.0.idx;
                 let user_bal_idx = self_node.1.idx;
-                let user_id_proof = proofs[user_id_idx];
-                let user_bal_proof = proofs[user_bal_idx];
-                let user_id_check = Verifier::check(pcs, &comm, omega.pow(&[user_id_idx as u64]), F::from(user_id), &user_id_proof).expect("");
+                let user_id_proof = proofs[user_id_idx].witness_p;
+                let user_bal_proof = proofs[user_bal_idx].witness_p;
+                let user_id_check = Verifier::check(pcs, &com_p, omega.pow(&[user_id_idx as u64]), F::from(user_id), &user_id_proof).expect("");
                 assert!(user_id_check);
-                let user_bal_check = Verifier::check(pcs, &comm, omega.pow(&[user_bal_idx as u64]), F::from(balance), &user_bal_proof).expect("");
+                let user_bal_check = Verifier::check(pcs, &com_p, omega.pow(&[user_bal_idx as u64]), F::from(balance), &user_bal_proof).expect("");
                 assert!(user_bal_check);
             }
             ProofValueNodeKind::Balance => {}
         }
 
+        // recursively check the evaluations of current node at fixed positions are copied from the previous nodes
         for idx in 2..proof_nodes.len() {
             let (cur_id_node, cur_value_node) = &proof_nodes[idx];
             match &cur_value_node.kind {
-                ProofValueNodeKind::Poly(comm, proofs, omega) => {
-                    assert_eq!(cur_id_node.id, calculate_hash(&comm));
+                ProofValueNodeKind::Poly(cur_poly_proof) => {
+                    let omega = cur_poly_proof.omega;
+                    let cur_com_p = cur_poly_proof.com_p;
+                    let cur_proofs = &cur_poly_proof.proofs;
+                    assert_eq!(cur_id_node.id, calculate_hash(&cur_com_p));
                     let (prev_id_node, prev_value_node) = &proof_nodes[idx - 1];
         
                     let id_idx: usize = prev_id_node.idx;
-                    let id_proof = proofs[id_idx];
-                    let id_check = Verifier::check(pcs, &comm, omega.pow(&[id_idx as u64]), F::from(prev_id_node.id), &id_proof).expect("");
+                    let id_proof = cur_proofs[id_idx].witness_p;
+                    let id_check = Verifier::check(pcs, &cur_com_p, omega.pow(&[id_idx as u64]), F::from(prev_id_node.id), &id_proof).expect("");
                     assert!(id_check);
-        
-                    // TODO
-                    // the verifying process is different from the above one
-                    // let value_idx = prev_value_node.idx;
-                    // let value_proof = proofs[value_idx];
-                    // let value_check = Verifier::check(pcs, &comm, omega.pow(&[value_idx as u64]), F::from(prev_value_node.id), &value_proof).expect("");
-                    // assert!(value_check);
+
+                    match &prev_value_node.kind {
+                        ProofValueNodeKind::Poly(poly_proof) => {
+                            // let prev_witness = prev_proofs[0];
+                            // let prev_comm_idx = prev_value_node.idx;
+                            // let z_vanishing_check = Verifier::check(pcs, &com_z, F::from(1), F::from(0), proof).expect("");
+                            // assert!(z_vanishing_check);
+                        }
+                        ProofValueNodeKind::Balance => {}
+                    }
                 }
                 ProofValueNodeKind::Balance => {}
             }

@@ -15,6 +15,9 @@ use crate::prover::constraints::PolyCopyConstraints;
 
 pub fn compute_aux_vector(liabilities: &Vec<u64>, max_bits: usize) -> Vec<u64> {
     let mut vec = Vec::<u64>::new();
+    if liabilities.len() <= 0 {
+        return vec;
+    }
     vec.push(liabilities[0]);
     vec.push(liabilities[0]);
     let mut remanent = liabilities[0];

@@ -117,7 +117,7 @@ impl Prover {
         let mut all_proofs = HashMap::<u64, SolProof>::new();
         for (user_id, path) in all_paths {
             let iterator = path.clone();
-            let proof_root = root.to_value_node().expect("");
+            let proof_root = root.trim().expect("");
             let mut nodes = Vec::<(ProofIdNode, ProofValueNode)>::new();
             let mut children = root.children.as_ref().unwrap();
             for idx in iterator {
@@ -127,7 +127,7 @@ impl Prover {
                 let comm_hash_child = &children[(idx - 1) as usize];
                 let comm_hash_node = comm_hash_child.to_id_node().expect("");
                 let comm_child = &children[idx as usize];
-                let proof_node = comm_child.to_value_node().expect("");
+                let proof_node = comm_child.trim().expect("");
                 nodes.push((comm_hash_node, proof_node));
                 if comm_child.children.is_none() {
                     break;

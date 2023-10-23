@@ -7,7 +7,6 @@ use ark_std::test_rng;
 use ark_std::rand::Rng;
 use ark_std::UniformRand;
 use ark_bls12_381::Fr as F;
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use solvency::common::calculate_hash;
 use solvency::prover::data_structures::Prover;
 use solvency::verifier::Verifier;
@@ -23,9 +22,13 @@ fn main() {
 
     let rng = &mut test_rng();
 
-    let l1 = vec![80, 1, 20, 2, 50, 3, 10];
-    let l2 = vec![60, 4, 10, 5, 30, 6, 10, 7, 10];
-    let l3 = vec![100, 8, 30, 9, 70];
+    let u1 = "ABCDEFG".chars().collect();
+    let u2 = "HIJKLMNOPQ".chars().collect();
+    let u3 = "RSTUVWXYZ".chars().collect();
+
+    let l1 = generate_liabilities(u1);
+    let l2 = generate_liabilities(u2);
+    let l3 = generate_liabilities(u3);
 
     let number_of_liabilities = l1.len() + l2.len() + l3.len();
     let max_degree = ((number_of_liabilities - 1) / 2 * MAX_BITS + 1).checked_next_power_of_two().expect("");
@@ -38,25 +41,21 @@ fn main() {
     let groups = [[group1.clone()], [group2]].concat();
     let intermediate = VerkleNode::from(&pcs, [].to_vec(), Some(groups), MAX_BITS).expect("");
     let root = VerkleNode::from(&pcs, [].to_vec(), Some([[intermediate.clone()], [group3]].concat()), MAX_BITS).expect("");
-    assert_eq!(root.value, 240);
+    assert_eq!(root.value, l1[0] + l2[0] + l3[0]);
 
     let epsilon = F::rand(rng);
     let final_proof = Prover::generate_grand_proof(&root, epsilon);
-    let user_id = 2;
+    let username = 'A';
+    let user_id = calculate_hash(&username);
     let proof = final_proof.get(&user_id).expect("UserId not found");
-    Verifier::verify(proof, &pcs, user_id, 50);
-    
-    let user_id = 7;
-    let proof = final_proof.get(&user_id).expect("UserId not found");
-    Verifier::verify(proof, &pcs, user_id, 10);
+    Verifier::verify(proof, &pcs, user_id, l1[2]);
 }
 
-fn generate_liabilities() -> Vec<u64> {
+fn generate_liabilities(usernames: Vec<char>) -> Vec<u64> {
     let rng = &mut test_rng();
 
-    let usernames: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
     let liabilities: Vec<u64> = usernames.iter()
-        .map(|_| { rng.gen_range(0..2_u64.pow(15)) })
+        .map(|_| { rng.gen_range(0..2_u64.pow(10)) })
         .collect();
     println!("{:?}", liabilities);
 

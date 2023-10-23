@@ -84,13 +84,6 @@ D: EvaluationDomain<F>,
     }
     let new_eval = Evaluations::<F, D>::from_vec_and_domain(new_evals, domain);
     let new_p = new_eval.interpolate();
-
-    for idx in 0..deg {
-        let point: F = root.pow(&[idx as u64]);
-        let eval = new_p.evaluate(&point);
-        // println!("{} - {} {}", idx, eval, eval.is_zero());
-    }
-
     let result = constrain_polys(&p.coeffs, &new_p.coeffs, scale, shift);
     result.expect("Failed to prove copy constraints");
     new_p
@@ -126,6 +119,18 @@ where
     IB: IntoIterator<Item = N>,
     F: FromIterator<N> + FromIterator<<N as Sub>::Output> {
     a.into_iter().zip(b).map(|(a, b)| a - b).collect()
+}
+
+pub fn add_assign<
+F: PrimeField,
+>(p: &DensePolynomial<F>, element: F, negative: bool) -> DensePolynomial<F> {
+    let mut new_p = p.clone();
+    if negative {
+        new_p.coeffs[0] -= element;
+    } else {
+        new_p.coeffs[0] += element;
+    }
+    new_p
 }
 
 #[cfg(test)]

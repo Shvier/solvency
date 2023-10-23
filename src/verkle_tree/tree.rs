@@ -1,12 +1,12 @@
 use std::fmt;
 
 use ark_ec::bls12::Bls12;
-use ark_poly::univariate::DensePolynomial;
+use ark_poly::{univariate::DensePolynomial, Polynomial};
 use ark_bls12_381::{Fr as F, Bls12_381};
 use ark_poly_commit::kzg10::{Commitment, Proof};
-use ark_ff::FftField;
+use ark_ff::{FftField, Field};
 
-use crate::error::Error;
+use crate::{error::Error, prover::data_structures::Prover, utils::add_assign};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodePolyProofPair {
@@ -18,6 +18,7 @@ pub struct NodePolyProofPair {
 pub struct NodePolyProof {
     pub p: DensePolynomial<F>,
     pub com_p: Commitment<Bls12_381>,
+    pub i: DensePolynomial<F>,
     pub w1: DensePolynomial<F>,
     pub w2: DensePolynomial<F>,
     pub w3: DensePolynomial<F>,
@@ -86,18 +87,28 @@ impl VerkleNode {
         }
     }
 
-    pub fn trim(&self) -> Result<ProofValueNode, Error> {
+    pub fn trim(&self, epsilon: F) -> Result<ProofValueNode, Error> {
         match &self.kind {
             NodeKind::Poly(poly) => {
                 let proofs = &poly.proofs;
                 let len = poly.p.coeffs.len().checked_next_power_of_two().expect("");
                 let omega = F::get_root_of_unity(len as u64).unwrap();
+                let i = &poly.i;
+                let last_point_idx = (i.coeffs.len() - 1) as u64;
+                let last_point = omega.pow(&[last_point_idx]);
+                let last_eval = i.evaluate(&last_point);
+                let w1 = &poly.w1;
+                let w2 = &poly.w2;
+                let w3 = &poly.w3;
+                let w = w1 + &(w2 * epsilon) + (w3 * epsilon.pow(&[2]));
+                let w = add_assign(&w, last_eval * epsilon.pow(&[3]), false);
                 let node = ProofValueNode {
                     id: self.id,
                     idx: self.idx,
                     kind: ProofValueNodeKind::Poly(ProofValuleNodePoly {
                         omega,
                         com_p: poly.com_p,
+                        w,
                         proofs: proofs.to_vec(),
                     }),
                 };
@@ -128,6 +139,7 @@ pub struct ProofIdNode {
 pub struct ProofValuleNodePoly {
     pub omega: F,
     pub com_p: Commitment<Bls12_381>,
+    pub w: DensePolynomial<F>,
     pub proofs: Vec<NodePolyProofPair>,
 }
 

@@ -66,6 +66,7 @@ impl VerkleNode {
 
         let prover = Prover::setup(&vectors, max_bits).unwrap();
         let p = prover.p.clone();
+        let i = prover.i.clone();
         let w1 = prover.compute_w1();
         let w2 = prover.compute_w2();
         let w3 = prover.compute_w3();
@@ -113,6 +114,7 @@ impl VerkleNode {
             kind: NodeKind::Poly(NodePolyProof { 
                 p,
                 com_p,
+                i,
                 w1,
                 w2, 
                 w3,

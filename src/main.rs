@@ -5,6 +5,7 @@ use ark_poly::univariate::DensePolynomial;
 use ark_poly_commit::kzg10::KZG10;
 use ark_std::test_rng;
 use ark_std::rand::Rng;
+use ark_std::UniformRand;
 use ark_bls12_381::Fr as F;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use solvency::common::calculate_hash;
@@ -39,7 +40,8 @@ fn main() {
     let root = VerkleNode::from(&pcs, [].to_vec(), Some([[intermediate.clone()], [group3]].concat()), MAX_BITS).expect("");
     assert_eq!(root.value, 240);
 
-    let final_proof = Prover::generate_grand_proof(&root);
+    let epsilon = F::rand(rng);
+    let final_proof = Prover::generate_grand_proof(&root, epsilon);
     let user_id = 2;
     let proof = final_proof.get(&user_id).expect("UserId not found");
     Verifier::verify(proof, &pcs, user_id, 50);

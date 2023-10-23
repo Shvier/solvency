@@ -3,6 +3,8 @@ use ark_poly::univariate::DensePolynomial;
 use ark_poly_commit::{kzg10::{KZG10, VerifierKey, Commitment, UniversalParams, Proof}, Error};
 use ark_bls12_381::{Fr as F, Bls12_381};
 use ark_ff::{FftField, Field};
+use ark_std::{test_rng, rand::Rng, Zero};
+use ark_poly::Polynomial;
 
 use crate::{verkle_tree::tree::*, common::calculate_hash, prover::data_structures::SolProof};
 
@@ -53,7 +55,8 @@ impl Verifier {
             match &cur_value_node.kind {
                 ProofValueNodeKind::Poly(cur_poly_proof) => {
                     let omega = cur_poly_proof.omega;
-                    let cur_com_p = cur_poly_proof.com_p;
+                    let cur_com_p = &cur_poly_proof.com_p;
+                    let w = &cur_poly_proof.w;
                     let cur_proofs = &cur_poly_proof.proofs;
                     assert_eq!(cur_id_node.id, calculate_hash(&cur_com_p));
                     let (prev_id_node, prev_value_node) = &proof_nodes[idx - 1];
@@ -78,6 +81,13 @@ impl Verifier {
                         }
                         ProofValueNodeKind::Balance => {}
                     }
+
+                    // check if w is vanishing at any point in the domain
+                    let mut rng = test_rng();
+                    let rand_num = rng.gen_range(0..w.coeffs.len());
+                    let point = omega.pow(&[rand_num as u64]);
+                    let eval = w.evaluate(&point);
+                    assert!(eval.is_zero());
                 }
                 ProofValueNodeKind::Balance => {}
             }
